@@ -1,0 +1,42 @@
+# Supplemental RBAC for webapp-operator — NOT part of its dist/install.yaml.
+#
+# Why this exists: the controller uses a corev1 EventRecorder (Recorder.Eventf
+# for DeploymentReconciled / ServiceReconciled / HPAReconciled / ReconcileFailed)
+# but webapp-operator-manager-role grants no rule for "events". Every event the
+# operator emits is therefore rejected by the API server:
+#
+#   events is forbidden: User "system:serviceaccount:webapp-operator-system:
+#   webapp-operator-controller-manager" cannot create resource "events" ...
+#
+# Reconciliation still works, but `kubectl describe webapp` shows no events and
+# nothing downstream (status-api, the Backstage plugin) can surface them.
+# This is an upstream gap in the operator repo, which we do not modify; we grant
+# the missing permission here instead. Delete this file once upstream adds the
+# rule to config/rbac/role.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webapp-operator-events-role
+  labels:
+    app.kubernetes.io/part-of: idp-backstage
+    idp.miportfolio.com/patch-for: webapp-operator
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webapp-operator-events-rolebinding
+  labels:
+    app.kubernetes.io/part-of: idp-backstage
+    idp.miportfolio.com/patch-for: webapp-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webapp-operator-events-role
+subjects:
+  - kind: ServiceAccount
+    name: webapp-operator-controller-manager
+    namespace: webapp-operator-system

@@ -1,0 +1,33 @@
+# --- Secrets: never in git ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig
+kubeconfig-*
+
+# --- Go ---
+bin/
+dist/
+*.test
+coverage.out
+
+# --- Node / Backstage ---
+node_modules/
+.yarn/cache
+.yarn/install-state.gz
+*.log
+npm-debug.log*
+yarn-error.log
+backstage/packages/*/dist/
+backstage/plugins/*/dist/
+plugins/*/dist/
+.turbo/
+
+# --- Local state ---
+*.local.yaml
+.DS_Store
+.idea/
+.vscode/
+tmp/

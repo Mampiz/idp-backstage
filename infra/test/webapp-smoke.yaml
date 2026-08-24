@@ -1,0 +1,21 @@
+# F0 smoke test resource.
+#
+# NOTE on the image tag: the operator ships a validating webhook
+# (internal/webhook/v1/webapp_webhook.go -> validateImageTag) that REJECTS both
+# ":latest" and implicit tags. The operator's own README quick-start and
+# config/samples/platform_v1_webapp.yaml use "nginx:latest" and are therefore
+# rejected by its own admission chain. Every WebApp produced anywhere in this
+# repo must carry an explicit, non-latest tag.
+apiVersion: platform.miportfolio.com/v1
+kind: WebApp
+metadata:
+  name: smoke-test
+  namespace: idp-demo
+spec:
+  image: nginx:1.27-alpine
+  replicas: 2
+  port: 80
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 4
+    cpuThresholdPercent: 70

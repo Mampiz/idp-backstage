@@ -1,0 +1,16 @@
+# kind cluster for the IDP. Everything in this repo targets THIS cluster only.
+# Node image pinned by digest so the cluster is byte-reproducible.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: idp-local
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.1@sha256:21c46cf61fd45873f89e6a1bfcba4b7904dffa84c2bec88aeeca9a0409af4725
+    extraPortMappings:
+      # Reserved for exposing scaffolded WebApps via NodePort during demos (F5/F6).
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      - containerPort: 30081
+        hostPort: 30081
+        protocol: TCP
