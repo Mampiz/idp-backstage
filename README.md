@@ -1,28 +1,54 @@
 # idp-backstage
 
-Internal Developer Platform sobre Backstage cuyo scaffolder no se queda en crear un
-repositorio: aplica un recurso `WebApp` en Kubernetes que reconcilia un operador
-propio ([Mampiz/webapp-operator](https://github.com/Mampiz/webapp-operator)).
+An Internal Developer Platform built on Backstage whose scaffolder does not stop
+at creating a repository: it applies a `WebApp` custom resource that is
+reconciled by a Kubernetes operator of my own,
+[Mampiz/webapp-operator](https://github.com/Mampiz/webapp-operator).
 
-Estado del proyecto y decisiones de diseño: [PROGRESS.md](PROGRESS.md).
-(README definitivo en F6.)
+Filling in a form in Backstage produces a repository, a running Deployment, a
+Service, an HPA, and an entry in the catalog that reflects the real state of the
+cluster. No manual step in between.
 
-## Arranque local
+Phase-by-phase status and every design decision: [PROGRESS.md](PROGRESS.md).
+
+## Design rule
+
+Backstage core is TypeScript and that cannot be avoided. Everything else is Go:
+if a piece of logic can live in a Go service, it lives in a Go service, and the
+TypeScript side is only ever an HTTP client to it.
+
+## Running it locally
 
 ```bash
-make bootstrap     # kind + cert-manager + webapp-operator
-make verify-f0     # verificador de la fase 0
+export GITHUB_TOKEN=$(gh auth token)   # never written to disk, not even to .env
+cp .env.example .env                   # non-secret local config
+make bootstrap                         # kind + cert-manager + webapp-operator
+make verify-f0                         # phase 0 verifier
+make dev                               # Postgres, the Go services and Backstage
 ```
 
-`make help` lista todos los targets.
+`make help` lists every target.
 
-## Estructura
+## Layout
 
 ```
-backstage/              app Backstage (TypeScript, lo mínimo imprescindible)
-services/status-api/    [GO] lee los WebApp CRs con client-go y los expone por REST
-services/scaffolder/    [GO] crea el repo en GitHub y aplica el WebApp CR
-plugins/webapp-status/  [TS] plugin de frontend que pinta el estado
-infra/                  cluster kind, instalación del operador, verificadores
+backstage/              Backstage app (TypeScript, kept to a minimum)
+services/status-api/    [GO] reads WebApp CRs with client-go, serves them over REST
+services/scaffolder/    [GO] GitHub-facing service: catalog discovery, repo creation,
+                             and applying the WebApp custom resource
+plugins/webapp-status/  [TS] frontend plugin rendering the live state
+catalog/                catalog entities owned by this repo
+infra/                  kind cluster, operator install, phase verifiers
 docs/                   TechDocs
 ```
+
+## Verifiers
+
+Each phase is only done when its verifier exits 0. They are real commands, not
+opinions, and they run in CI as well as locally.
+
+| Command | What it proves |
+|---------|----------------|
+| `make verify-f0` | The operator is installed and reconciles a WebApp into Ready pods |
+| `make verify-f1` | Backstage runs on Postgres, discovery works, and the catalog survives a database restart |
+| `make verify-f2` | The status API reports what `kubectl` reports, compared field by field |
