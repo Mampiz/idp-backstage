@@ -7,7 +7,7 @@ State of the phase graph. A phase is not done until its verifier exits 0.
 | F0 | Base: kind + operator + monorepo | ✅ **passes** | `make verify-f0` |
 | F1 | Backstage base (Postgres, catalog, discovery) | ✅ **passes** | `make verify-f1` |
 | F2 | [GO] status-api | ✅ **passes** | `make verify-f2` |
-| F3 | [GO] scaffolder service | 🟡 built and tested, **verifier blocked on a token scope** | `make verify-f3` |
+| F3 | [GO] scaffolder service | ✅ **passes** | `make verify-f3` |
 | F4 | Backstage software template | ⬜ pending | the form in `/create` produces repo + CR + pods |
 | F5 | webapp-status frontend plugin | ⬜ pending (checkpoint) | the tab tracks a real `kubectl scale` |
 | F6 | Wrap-up: TechDocs, README, diagram, GIF | ⬜ pending | — |
@@ -249,10 +249,17 @@ the uid behind that name.
 
 ---
 
-## F3 · SCAFFOLDER SERVICE — 🟡 built and tested, verifier blocked
+## F3 · SCAFFOLDER SERVICE — ✅ passes
 
-**Verifier:** `make verify-f3`. Steps 1 and 2 pass; step 3 is blocked by a missing scope on
-the GitHub token, which needs a browser to fix. See the blocker below.
+**Verifier:** `make verify-f3` → exit 0. It creates a real repository in a real GitHub
+account and a real workload in the cluster, then checks that the scaffolded files are
+actually in the repository, that `kubectl` lists the custom resource, that the pods reach
+Ready, that repeating the request is a no-op, and that a request the operator would reject
+is refused before anything is created.
+
+Proof of the last run: [Mampiz/idp-scaffold-demo](https://github.com/Mampiz/idp-scaffold-demo),
+two commits (`Initialise repository`, `Scaffold idp-scaffold-demo`), its own CI green, and
+`idp-apps/idp-scaffold-demo` running 2/2 pods in the cluster.
 
 ### What I did
 
@@ -317,9 +324,9 @@ would mean either coupling both images to a repo-root build context or adding a 
 module with a `replace` that breaks outside the workspace. The duplication is cheaper than
 either.
 
-### 🚧 BLOCKER: the GitHub token is missing the `workflow` scope
+### The `workflow` scope, and a 404 that means something else entirely
 
-The verifier fails at the push step with a **404 Not Found** from
+Worth recording because it cost real time. The push step failed with a **404 Not Found** from
 `POST /repos/{owner}/{repo}/git/trees`, with an empty body. That reads like a missing
 repository, and it is not: writing a tree that contains anything under
 `.github/workflows/` requires the `workflow` scope, and GitHub reports its absence as a
@@ -330,11 +337,12 @@ CreateTree with entry "probe2.txt"                  -> 201 Created
 CreateTree with entry ".github/workflows/probe.yml" -> 404 Not Found
 ```
 
-The `gh` CLI does not request that scope by default; this token carries
-`admin:public_key, gist, read:org, repo`. The fix needs a browser:
+The `gh` CLI does not request that scope by default. The fix:
 
 ```
+unset GITHUB_TOKEN                            # gh refuses to refresh while it is set
 gh auth refresh -h github.com -s workflow
+export GITHUB_TOKEN=$(gh auth token)
 ```
 
 The service no longer fails opaquely on this: the 404 is translated into a named error that
