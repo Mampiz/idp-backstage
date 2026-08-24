@@ -40,6 +40,7 @@
     "@backstage/plugin-techdocs-module-addons-contrib": "^1.1.39",
     "@backstage/plugin-user-settings": "^0.9.6",
     "@backstage/ui": "^0.17.1",
+    "@internal/plugin-webapp-status": "workspace:^",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "react": "^18.0.2",

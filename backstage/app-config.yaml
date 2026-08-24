@@ -162,12 +162,15 @@ integrations:
     #   token: ${GHE_TOKEN}
 
 proxy:
-  ### Example for how to add a proxy endpoint for the frontend.
-  ### A typical reason to do this is to handle HTTPS and CORS for internal services.
-  # endpoints:
-  #   '/test':
-  #     target: 'https://example.com'
-  #     changeOrigin: true
+  endpoints:
+    # The webapp-status plugin reads the Go status API through here rather than
+    # calling it from the browser: the service is not a browser-facing origin,
+    # and going through the proxy means no CORS configuration and no second URL
+    # for the frontend to know about.
+    '/webapp-status':
+      target: ${STATUS_API_URL}
+      changeOrigin: true
+      allowedMethods: [GET]
 
 # Reference documentation http://backstage.io/docs/features/techdocs/configuration
 # Note: After experimenting with basic setup, use CI/CD to generate docs

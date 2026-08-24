@@ -5,10 +5,6 @@
  */
 import { createScaffoldWebAppAction } from './scaffoldWebApp';
 
-type Handler = Parameters<typeof createScaffoldWebAppAction> extends never
-  ? never
-  : ReturnType<typeof createScaffoldWebAppAction>['handler'];
-
 const baseUrl = 'http://scaffolder.test';
 
 function context(overrides: Record<string, unknown> = {}) {

@@ -62,5 +62,18 @@ export default defineConfig({
 
   outputDir: 'node_modules/.cache/e2e-test-results',
 
-  projects: generateProjects(), // Find all packages with e2e-test folders
+  // generateProjects hard-defaults to the "chrome" channel, meaning a Google
+  // Chrome installed system-wide, which needs root to install. Playwright's own
+  // bundled chromium does not, so the channel key is removed unless
+  // PLAYWRIGHT_CHANNEL asks for a specific one. Passing undefined is not enough:
+  // the helper resolves it with ?? and falls back to "chrome" again.
+  projects: generateProjects().map(project => {
+    const { channel: _generated, ...use } = project.use ?? {};
+    return {
+      ...project,
+      use: process.env.PLAYWRIGHT_CHANNEL
+        ? { ...use, channel: process.env.PLAYWRIGHT_CHANNEL }
+        : use,
+    };
+  }), // Find all packages with e2e-test folders
 });

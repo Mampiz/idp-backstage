@@ -206,6 +206,12 @@ verify-f3: require-github-token ## F3 verifier: a real repository, a real custom
 verify-f4: require-github-token ## F4 verifier: executing the template produces repo + custom resource + pods
 	@KUBE_CONTEXT=$(KUBE_CONTEXT) GITHUB_OWNER=$(GITHUB_OWNER) ./infra/scripts/verify-f4.sh
 
+##@ F5 - Frontend plugin
+
+.PHONY: verify-f5
+verify-f5: ## F5 verifier: the WebApp tab shows the real cluster state and follows a kubectl scale
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f5.sh
+
 ##@ Utils
 
 .PHONY: kubectx
