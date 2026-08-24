@@ -32,15 +32,17 @@ func TestExplainWorkflowScopeTranslatesTheOpaque404(t *testing.T) {
 }
 
 func TestExplainWorkflowScopeLeavesOtherFailuresAlone(t *testing.T) {
-	entries := []*github.TreeEntry{{Path: github.Ptr("main.go")}}
-
-	if err := explainWorkflowScope(notFound(), entries); errors.Is(err, ErrWorkflowScope) {
+	plain := []*github.TreeEntry{{Path: github.Ptr("main.go")}}
+	if err := explainWorkflowScope(notFound(), plain); errors.Is(err, ErrWorkflowScope) {
 		t.Error("a 404 without workflow files was blamed on the scope")
 	}
 
+	withWorkflow := []*github.TreeEntry{
+		{Path: github.Ptr("main.go")},
+		{Path: github.Ptr(".github/workflows/ci.yml")},
+	}
 	other := &github.ErrorResponse{Response: &http.Response{StatusCode: http.StatusInternalServerError}}
-	entries = append(entries, &github.TreeEntry{Path: github.Ptr(".github/workflows/ci.yml")})
-	if err := explainWorkflowScope(other, entries); errors.Is(err, ErrWorkflowScope) {
+	if err := explainWorkflowScope(other, withWorkflow); errors.Is(err, ErrWorkflowScope) {
 		t.Error("a 500 was blamed on the scope")
 	}
 }

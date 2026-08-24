@@ -51,6 +51,11 @@ done
 pass "both webhook configurations have an injected caBundle"
 
 step "4. A valid WebApp is accepted and reconciled"
+# The webhooks fail closed, so an apply issued before they are serving is
+# rejected with a connection error. Wait for them to admit requests first; this
+# is an extra assertion, not a softer one.
+KUBE_CONTEXT="${CONTEXT}" "${ROOT}/infra/scripts/wait-operator-webhook.sh" \
+  || fail "the operator webhooks never started serving"
 ${K} create namespace "${NS}" --dry-run=client -o yaml | ${K} apply -f - >/dev/null
 ${K} apply -f "${ROOT}/infra/test/webapp-smoke.yaml" >/dev/null \
   || fail "apply of the smoke WebApp was rejected"

@@ -68,6 +68,8 @@ operator-install: ## Install webapp-operator $(OPERATOR_VERSION) from its dist/i
 	@# Upstream gap: the operator emits events but its ClusterRole has no rule for
 	@# them, so every event is rejected. See infra/operator/events-rbac.yaml.
 	$(KUBECTL) apply -f infra/operator/events-rbac.yaml
+	@# Available is not the same as serving, and the webhooks fail closed.
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/wait-operator-webhook.sh
 
 .PHONY: bootstrap
 bootstrap: cluster-up cert-manager operator-install ## Full F0 bring-up from zero
