@@ -26,6 +26,18 @@ NS="${WEBAPP_NAMESPACE:-idp-apps}"
 # one of its own yet at the moment the custom resource is applied.
 IMAGE="${SCAFFOLD_DEMO_IMAGE:-nginx:1.27-alpine}"
 
+# kubectl wait errors out immediately when the resource does not exist yet,
+# rather than waiting for it to appear. The operator creates the Deployment a
+# moment after the custom resource is admitted, so wait for it to exist first.
+wait_for_deployment() {
+  local namespace="$1" name="$2"
+  for _ in $(seq 1 60); do
+    ${K} -n "${namespace}" get deployment "${name}" >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1" >&2; exit 1; }
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
@@ -93,6 +105,8 @@ ${K} -n "${NS}" get webapp "${DEMO}" >/dev/null 2>&1 \
   || fail "WebApp ${NS}/${DEMO} is not in the cluster"
 pass "kubectl lists WebApp ${NS}/${DEMO}"
 
+wait_for_deployment "${NS}" "${DEMO}-deployment" \
+  || fail "the operator never created Deployment ${DEMO}-deployment"
 ${K} -n "${NS}" wait deployment/"${DEMO}-deployment" --for=condition=Available --timeout=180s >/dev/null \
   || fail "the Deployment never became Available"
 

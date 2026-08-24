@@ -16,6 +16,18 @@ NS="idp-demo"
 NAME="smoke-test"
 PID=""
 
+# kubectl wait errors out immediately when the resource does not exist yet,
+# rather than waiting for it to appear. The operator creates the Deployment a
+# moment after the custom resource is admitted, so wait for it to exist first.
+wait_for_deployment() {
+  local namespace="$1" name="$2"
+  for _ in $(seq 1 60); do
+    ${K} -n "${namespace}" get deployment "${name}" >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1" >&2; exit 1; }
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
@@ -34,6 +46,8 @@ step "2. A WebApp exists in the cluster to report on"
 ${K} get crd webapps.platform.miportfolio.com >/dev/null 2>&1 || fail "the CRD is missing - run 'make bootstrap'"
 ${K} create namespace "${NS}" --dry-run=client -o yaml | ${K} apply -f - >/dev/null
 ${K} apply -f infra/test/webapp-smoke.yaml >/dev/null
+wait_for_deployment "${NS}" "${NAME}-deployment" \
+  || fail "the operator never created Deployment ${NAME}-deployment"
 ${K} -n "${NS}" wait deployment/"${NAME}-deployment" --for=condition=Available --timeout=180s >/dev/null \
   || fail "the smoke WebApp never became Available"
 pass "WebApp ${NS}/${NAME} is running in the cluster"
