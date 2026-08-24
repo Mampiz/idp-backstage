@@ -1,0 +1,45 @@
+# Backstage app: type check, lint and unit tests. Kept separate from the Go
+# workflow so a change in one does not queue the other.
+name: backstage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backstage/**'
+      - '.github/workflows/backstage.yml'
+  pull_request:
+    paths:
+      - 'backstage/**'
+      - '.github/workflows/backstage.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backstage
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: backstage/yarn.lock
+
+      - name: Install
+        run: yarn install --immutable
+
+      - name: Type check
+        run: yarn tsc
+
+      - name: Lint
+        run: yarn backstage-cli repo lint
+
+      - name: Test
+        run: yarn backstage-cli repo test

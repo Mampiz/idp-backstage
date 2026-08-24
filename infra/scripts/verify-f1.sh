@@ -11,6 +11,7 @@ cd "${ROOT}"
 [ -f .env ] && set -a && . ./.env && set +a
 
 BACKEND_URL="http://localhost:7007"
+DISCOVERY_URL="http://localhost:8082"
 APP_URL="http://localhost:3000"
 LOG="${ROOT}/backstage-dev.log"
 PID=""
@@ -38,8 +39,8 @@ port_busy() { ss -ltn 2>/dev/null | grep -q ":$1[[:space:]]"; }
 # The GitHub token is never stored in .env; it has to come from the environment.
 [ -n "${GITHUB_TOKEN:-}" ] || fail "GITHUB_TOKEN is not exported - run: export GITHUB_TOKEN=\$(gh auth token)"
 
-step "1. Postgres is up"
-docker compose up -d postgres >/dev/null 2>&1
+step "1. Postgres and the discovery service are up"
+docker compose up -d postgres scaffolder >/dev/null 2>&1
 for _ in $(seq 1 30); do
   docker compose exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1 && break
   sleep 1
@@ -47,6 +48,15 @@ done
 docker compose exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1 \
   || fail "postgres never became ready"
 pass "postgres accepting connections"
+
+for _ in $(seq 1 30); do
+  curl -fsS "${DISCOVERY_URL}/healthz" >/dev/null 2>&1 && break
+  sleep 1
+done
+curl -fsS "${DISCOVERY_URL}/healthz" >/dev/null 2>&1 || fail "the scaffolder service is not answering on ${DISCOVERY_URL}"
+discovery="$(curl -fsS "${DISCOVERY_URL}/catalog/discovery")"
+echo "${discovery}" | grep -q 'kind: Location' || fail "the discovery endpoint did not return a Location entity"
+pass "discovery service serving a Location entity"
 
 step "2. Backstage boots"
 for port in 3000 7007; do
@@ -99,7 +109,25 @@ slug="$(echo "${body}" | python3 -c 'import json,sys; print(json.load(sys.stdin)
 [ "${slug}" = "Mampiz/webapp-operator" ] || fail "unexpected project-slug '${slug}'"
 pass "Component webapp-operator served by the catalog API (slug ${slug})"
 
-step "5. Data survives a restart of the database container"
+step "5. GitHub discovery reaches the catalog"
+# idp-backstage is discovered, not statically registered: it only appears if the
+# Go service found its catalog-info.yaml on GitHub and Backstage followed the
+# Location entity to it.
+for _ in $(seq 1 40); do
+  disc_body="$(curl -fsS -H "Authorization: Bearer ${BACKSTAGE_VERIFY_TOKEN}" \
+    "${BACKEND_URL}/api/catalog/entities/by-name/component/default/idp-backstage" 2>/dev/null || true)"
+  echo "${disc_body}" | grep -q '"name":"idp-backstage"' && break
+  sleep 3
+done
+echo "${disc_body:-}" | grep -q '"name":"idp-backstage"' \
+  || fail "component/default/idp-backstage was not discovered - the Location entity did not reach the catalog"
+origin="$(echo "${disc_body}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["metadata"]["annotations"]["backstage.io/managed-by-origin-location"])')"
+case "${origin}" in
+  *localhost:8082*) pass "idp-backstage came in through the Go discovery service (${origin})" ;;
+  *) fail "idp-backstage was ingested from ${origin}, not from the discovery service" ;;
+esac
+
+step "6. Data survives a restart of the database container"
 cleanup; PID=""
 sleep 2
 docker compose restart postgres >/dev/null 2>&1 || fail "could not restart the postgres container"

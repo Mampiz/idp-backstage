@@ -1,0 +1,71 @@
+# Go services: format, vet, tests. The two services are separate modules tied
+# together by go.work, so the matrix runs each one in its own directory.
+name: go
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'go.work'
+      - '.github/workflows/go.yml'
+  pull_request:
+    paths:
+      - 'services/**'
+      - 'go.work'
+      - '.github/workflows/go.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [status-api, scaffolder]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          cache-dependency-path: services/${{ matrix.service }}/go.sum
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test -race -count=1 ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [status-api, scaffolder]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          cache-dependency-path: services/${{ matrix.service }}/go.sum
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          working-directory: services/${{ matrix.service }}

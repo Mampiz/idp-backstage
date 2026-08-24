@@ -129,6 +129,11 @@ backend:
       port: ${POSTGRES_PORT}
       user: ${POSTGRES_USER}
       password: ${POSTGRES_PASSWORD}
+  # The Go scaffolder service is not a configured integration host, so reading
+  # from it has to be allowed explicitly.
+  reading:
+    allow:
+      - host: localhost:8082
   # Static token used only by the local phase verifiers to call the backend APIs
   # without going through the browser guest session.
   auth:
@@ -203,6 +208,15 @@ catalog:
   rules:
     - allow: [Component, System, API, Resource, Location]
   locations:
+    # GitHub discovery, served by the Go scaffolder service. Backstage's own
+    # GithubEntityProvider only discovers organizations, and these repositories
+    # live under a personal account, so the discovery is done in Go and handed
+    # over as a plain Location entity. See PROGRESS.md (F1).
+    - type: url
+      target: http://localhost:8082/catalog/discovery
+      rules:
+        - allow: [Component, System, API, Resource, Location, Group]
+
     # The operator this platform is built around. Its repository has no
     # catalog-info.yaml and we do not modify it, so the entity is declared in
     # this monorepo. Paths are relative to the backend process (packages/backend).

@@ -1,0 +1,45 @@
+# End-to-end phase verifiers. These are the same scripts used locally: they
+# stand up a real kind cluster, install cert-manager and the operator, and
+# assert that a WebApp custom resource is reconciled into running pods.
+#
+# This is the workflow that actually proves the platform works. The unit tests
+# only prove the code compiles and behaves in isolation.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  f0-cluster-and-operator:
+    name: F0 - cluster, operator, WebApp reconciliation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create the kind cluster
+        uses: helm/kind-action@v1
+        with:
+          config: infra/kind/idp-local.yaml
+
+      - name: Install cert-manager
+        run: make cert-manager
+
+      - name: Install webapp-operator
+        run: make operator-install
+
+      - name: Run the F0 verifier
+        run: make verify-f0
+
+      - name: Dump operator logs on failure
+        if: failure()
+        run: |
+          kubectl --context=kind-idp-local -n webapp-operator-system \
+            logs deployment/webapp-operator-controller-manager --tail=200 || true
+          kubectl --context=kind-idp-local get webapps -A -o yaml || true

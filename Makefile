@@ -126,8 +126,18 @@ require-github-token:
 		echo "  export GITHUB_TOKEN=\$$(gh auth token)"; \
 		exit 1; }
 
+.PHONY: services-up
+services-up: require-github-token ## Start the Go services that Backstage depends on
+	docker compose up -d --build scaffolder
+	@until curl -fsS http://localhost:8082/healthz >/dev/null 2>&1; do sleep 1; done
+	@echo "scaffolder ready on http://localhost:8082"
+
+.PHONY: services-down
+services-down: ## Stop the Go services
+	docker compose stop scaffolder
+
 .PHONY: dev
-dev: require-github-token db-up ## Run Backstage (frontend + backend) against the local Postgres
+dev: require-github-token db-up services-up ## Run the whole platform locally
 	cd backstage && yarn start
 
 .PHONY: verify-f1

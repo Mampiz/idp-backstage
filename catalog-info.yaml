@@ -1,0 +1,42 @@
+# This monorepo describes itself. The scaffolder's discovery endpoint finds this
+# file the same way it will find every repository the platform scaffolds, so the
+# platform is catalogued by exactly the mechanism it provides to everyone else.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: idp-backstage
+  title: IDP (Backstage)
+  description: >-
+    The developer portal itself: catalog, software templates and the WebApp
+    status view.
+  annotations:
+    github.com/project-slug: Mampiz/idp-backstage
+    backstage.io/source-location: url:https://github.com/Mampiz/idp-backstage/
+  tags: [backstage, typescript, platform]
+  links:
+    - url: https://github.com/Mampiz/idp-backstage
+      title: Source
+      icon: github
+spec:
+  type: website
+  lifecycle: experimental
+  owner: group:default/platform
+  system: system:default/idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: scaffolder-service
+  title: Scaffolder Service
+  description: >-
+    Go service that owns everything this platform does against GitHub: catalog
+    discovery for accounts Backstage cannot discover on its own, and creating a
+    repository plus its WebApp custom resource.
+  annotations:
+    github.com/project-slug: Mampiz/idp-backstage
+  tags: [go, github, kubernetes]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/platform
+  system: system:default/idp
