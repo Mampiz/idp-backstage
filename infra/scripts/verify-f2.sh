@@ -53,8 +53,14 @@ ${K} -n "${NS}" wait deployment/"${NAME}-deployment" --for=condition=Available -
 pass "WebApp ${NS}/${NAME} is running in the cluster"
 
 step "3. The service serves what is really there"
-ss -ltn 2>/dev/null | grep -q ':8081[[:space:]]' && fail "port 8081 is already in use"
-KUBE_CONTEXT="${CONTEXT}" go run ./services/status-api/cmd/status-api >/tmp/status-api-verify.log 2>&1 &
+ss -ltn 2>/dev/null | grep -q ':8081[[:space:]]' \
+  && fail "port 8081 is already in use - stop whatever is holding it (pkill -x status-api)"
+# Built rather than "go run": go run execs the compiled binary as a child, so
+# killing the go process leaves the service holding port 8081 and poisons the
+# next run.
+binary="$(mktemp -d)/status-api"
+(cd services/status-api && go build -o "${binary}" ./cmd/status-api) || fail "could not build the status API"
+KUBE_CONTEXT="${CONTEXT}" "${binary}" >/tmp/status-api-verify.log 2>&1 &
 PID=$!
 
 for _ in $(seq 1 60); do
