@@ -1,0 +1,53 @@
+# Operating it
+
+## How it gets deployed
+
+Pushing to `{{ .DefaultBranch }}` builds an image and publishes it to
+`ghcr.io/{{ .Owner }}/{{ .Name }}`, tagged with the commit sha.
+
+Tags are always explicit. The operator's admission webhook **rejects `:latest`
+and untagged images**, so an image reference you cannot pin is one it will not
+run. That is a feature: it means what is running can always be traced back to a
+commit.
+
+## Changing what runs
+
+[`webapp.yaml`](https://github.com/{{ .Owner }}/{{ .Name }}/blob/{{ .DefaultBranch }}/webapp.yaml)
+is the desired state, and it lives with the code so it can change through a pull
+request:
+
+```yaml
+spec:
+  image: {{ .Image }}
+  replicas: {{ .Replicas }}
+  port: {{ .Port }}
+```
+
+Point `spec.image` at a published tag and apply it:
+
+```bash
+make deploy
+```
+
+## Scaling
+
+```bash
+kubectl -n {{ .Namespace }} scale webapp {{ .Name }} --replicas=4
+```
+
+The **WebApp** tab on this component's page in Backstage follows that within a
+few seconds.
+
+To hand the replica count to an autoscaler instead, add an `autoscaling` block:
+
+```yaml
+spec:
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 10
+    cpuThresholdPercent: 70
+```
+
+When that block is present the operator stops managing the replica count and the
+HPA owns it, so what you asked for and what is running will legitimately differ.
+The WebApp tab shows both numbers rather than pretending they are one.

@@ -1,0 +1,37 @@
+# {{ .Name }}
+
+{{ .Description }}
+
+Scaffolded by the [IDP](https://github.com/{{ .Owner }}/idp-backstage). Creating
+this repository also applied a `WebApp` custom resource, so the service was
+already running before anyone cloned it.
+
+## Endpoints
+
+| Path | Purpose |
+|------|---------|
+| `/` | Service identity |
+| `/healthz` | Liveness: the process is up |
+| `/readyz` | Readiness: the process can serve traffic |
+| `/metrics` | Prometheus metrics |
+
+`/healthz` and `/readyz` answer different questions on purpose. Liveness must
+never depend on anything external, or an outage in a dependency turns into a
+restart loop; readiness is where "cannot serve right now" belongs.
+
+## No dependencies
+
+This service uses the standard library only. The metrics endpoint writes
+Prometheus exposition format by hand, which is about sixty lines for a counter
+and a duration total — cheaper than a dependency, a `go.sum` to keep in sync and
+a supply chain to audit. Reach for `prometheus/client_golang` the day the metrics
+stop being trivial.
+
+## Local development
+
+```bash
+make run     # run on :{{ .Port }}
+make test
+make lint
+make image   # build the container image
+```

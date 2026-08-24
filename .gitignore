@@ -32,3 +32,7 @@ plugins/*/dist/
 .vscode/
 tmp/
 backstage-dev.log
+
+# --- Demo recording (the GIF is committed, the raw video is not) ---
+backstage/demo/recording/
+e2e-test-report/

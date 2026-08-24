@@ -15,6 +15,7 @@ OPERATOR_VERSION     ?= v1.0.0
 OPERATOR_INSTALL_URL ?= https://raw.githubusercontent.com/Mampiz/webapp-operator/$(OPERATOR_VERSION)/dist/install.yaml
 STATUS_API_IMAGE     ?= idp/status-api:dev
 SCAFFOLDER_IMAGE     ?= idp/scaffolder:dev
+TECHDOCS_IMAGE       ?= spotify/techdocs
 CERT_MANAGER_URL     ?= https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
 KUBECTL := kubectl --context=$(KUBE_CONTEXT)
@@ -211,6 +212,21 @@ verify-f4: require-github-token ## F4 verifier: executing the template produces 
 .PHONY: verify-f5
 verify-f5: ## F5 verifier: the WebApp tab shows the real cluster state and follows a kubectl scale
 	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f5.sh
+
+##@ F6 - Documentation
+
+.PHONY: docs-build
+docs-build: ## Build the TechDocs site locally with the official image
+	docker run --rm -v "$(CURDIR)":/content -w /content --entrypoint mkdocs \
+		$(TECHDOCS_IMAGE) build -d /tmp/techdocs-site
+
+.PHONY: record-demo
+record-demo: require-github-token ## Re-record the README demo (creates a real repository)
+	./infra/scripts/record-demo.sh
+
+.PHONY: verify-f6
+verify-f6: ## F6 verifier: the docs build, the portal serves them, and the demo exists
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f6.sh
 
 ##@ Utils
 

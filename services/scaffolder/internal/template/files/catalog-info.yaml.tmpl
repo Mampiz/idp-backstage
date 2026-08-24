@@ -6,6 +6,7 @@ metadata:
   annotations:
     github.com/project-slug: {{ .Owner }}/{{ .Name }}
     backstage.io/source-location: url:https://github.com/{{ .Owner }}/{{ .Name }}/
+    backstage.io/techdocs-ref: dir:.
     # Read by the webapp-status plugin to find the custom resource this
     # component is running as.
     platform.miportfolio.com/webapp: {{ .Namespace }}/{{ .Name }}

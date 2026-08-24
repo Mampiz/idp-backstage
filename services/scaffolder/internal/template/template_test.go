@@ -36,6 +36,9 @@ func TestRenderProducesEveryExpectedFile(t *testing.T) {
 		"README.md",
 		"catalog-info.yaml",
 		"webapp.yaml",
+		"mkdocs.yml",
+		"docs/index.md",
+		"docs/operating.md",
 		".gitignore",
 		".github/workflows/ci.yml",
 	} {
