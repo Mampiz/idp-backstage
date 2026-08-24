@@ -19,6 +19,8 @@ import (
 	"github.com/Mampiz/idp-backstage/services/scaffolder/internal/config"
 	"github.com/Mampiz/idp-backstage/services/scaffolder/internal/discovery"
 	"github.com/Mampiz/idp-backstage/services/scaffolder/internal/httpapi"
+	"github.com/Mampiz/idp-backstage/services/scaffolder/internal/k8s"
+	"github.com/Mampiz/idp-backstage/services/scaffolder/internal/provision"
 )
 
 func main() {
@@ -38,7 +40,32 @@ func run(logger *slog.Logger) error {
 
 	client := github.NewClient(nil).WithAuthToken(cfg.GitHubToken)
 	discoverer := discovery.New(client, cfg.Owner, cfg.CatalogPath, cfg.DiscoveryTTL)
-	server := httpapi.New(discoverer, cfg.Owner, logger)
+
+	clients, err := k8s.New()
+	if err != nil {
+		return err
+	}
+	logger.Info("connected to the cluster", "host", clients.Host)
+
+	repos := provision.NewGitHub(client)
+	// Surface a token that cannot finish the job now, not half way through
+	// provisioning somebody's repository.
+	if err := repos.CheckTokenScopes(context.Background()); err != nil {
+		logger.Warn("the GitHub token may not be able to complete a scaffold", "error", err)
+	}
+
+	scaffolder := provision.NewService(
+		repos,
+		provision.NewCluster(clients.Dynamic, clients.Typed),
+		logger,
+		provision.Options{
+			DefaultOwner:     cfg.Owner,
+			DefaultNamespace: cfg.Namespace,
+			Private:          cfg.PrivateRepos,
+		},
+	)
+
+	server := httpapi.New(discoverer, scaffolder, cfg.Owner, logger)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

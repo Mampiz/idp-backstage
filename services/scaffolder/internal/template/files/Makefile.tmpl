@@ -1,0 +1,32 @@
+IMAGE ?= {{ .Image }}
+
+.DEFAULT_GOAL := help
+
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} \
+	/^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+.PHONY: run
+run: ## Run the service locally
+	go run .
+
+.PHONY: test
+test: ## Run the tests
+	go test -race ./...
+
+.PHONY: lint
+lint: ## Vet and format check
+	go vet ./...
+	@test -z "$$(gofmt -l .)" || { echo "not gofmt'd:"; gofmt -l .; exit 1; }
+
+.PHONY: build
+build: ## Build the binary
+	go build -o bin/{{ .Name }} .
+
+.PHONY: image
+image: ## Build the container image
+	docker build -t $(IMAGE) .
+
+.PHONY: deploy
+deploy: ## Apply the WebApp custom resource
+	kubectl apply -f webapp.yaml

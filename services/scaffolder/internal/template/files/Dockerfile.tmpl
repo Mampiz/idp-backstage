@@ -1,0 +1,15 @@
+# Multi-stage build producing a distroless, non-root image.
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+
+# No third-party dependencies, so there is nothing to download: the build is
+# fully offline and reproducible.
+COPY go.mod ./
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/{{ .Name }} .
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/{{ .Name }} /{{ .Name }}
+EXPOSE {{ .Port }}
+USER nonroot:nonroot
+ENTRYPOINT ["/{{ .Name }}"]

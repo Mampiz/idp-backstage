@@ -22,26 +22,6 @@ services:
       timeout: 5s
       retries: 20
 
-  # Backstage cannot discover the repositories of a personal GitHub account
-  # (its provider only queries organizations), so this Go service does it and
-  # hands Backstage a Location entity. GITHUB_TOKEN is passed through from the
-  # shell environment and is never written to a file.
-  scaffolder:
-    build:
-      context: ./services/scaffolder
-    container_name: idp-scaffolder
-    restart: on-failure:3
-    environment:
-      # Empty default on purpose: compose interpolates the whole file, so a hard
-      # requirement here would break "docker compose up postgres" too. The
-      # service itself fails loudly on an empty token, and the Makefile has a
-      # require-github-token guard in front of the targets that need it.
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_OWNER: ${GITHUB_OWNER:-Mampiz}
-      SCAFFOLDER_ADDR: ":8082"
-    ports:
-      - "8082:8082"
-
 volumes:
   idp-pgdata:
     name: idp-pgdata

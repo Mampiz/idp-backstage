@@ -1,0 +1,54 @@
+package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestHealthzIsAlwaysOK(t *testing.T) {
+	rec := httptest.NewRecorder()
+	routes(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+// Readiness is a different question from liveness, and answers differently
+// before startup finishes.
+func TestReadyzReportsStartup(t *testing.T) {
+	ready.Store(false)
+	rec := httptest.NewRecorder()
+	routes(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status while starting = %d, want 503", rec.Code)
+	}
+
+	ready.Store(true)
+	rec = httptest.NewRecorder()
+	routes(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("status once ready = %d, want 200", rec.Code)
+	}
+}
+
+func TestMetricsAreExposedInPrometheusFormat(t *testing.T) {
+	handler := routes(nil)
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "{{ .MetricPrefix }}_requests_total") {
+		t.Errorf("metrics are missing the request counter:\n%s", body)
+	}
+	if !strings.Contains(body, "# TYPE") {
+		t.Errorf("metrics are missing TYPE hints:\n%s", body)
+	}
+}

@@ -1,0 +1,128 @@
+package main
+
+import (
+	"cmp"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"slices"
+	"sync"
+	"time"
+)
+
+// Metrics in Prometheus exposition format, written by hand.
+//
+// This service has no third-party dependencies, and a counter and a duration
+// total are not worth acquiring one for: no go.sum to keep in sync, no supply
+// chain to audit, and the repository builds offline. Swap in
+// prometheus/client_golang the day the metrics stop being trivial.
+var metrics = newRegistry()
+
+// requestKey identifies one counter series.
+type requestKey struct {
+	Path string
+	Code int
+}
+
+type registry struct {
+	mu            sync.Mutex
+	requests      map[requestKey]int64
+	durationSum   map[string]float64
+	durationCount map[string]int64
+	started       time.Time
+}
+
+func newRegistry() *registry {
+	return &registry{
+		requests:      map[requestKey]int64{},
+		durationSum:   map[string]float64{},
+		durationCount: map[string]int64{},
+		started:       time.Now(),
+	}
+}
+
+// RecordRequest is called by the instrumenting middleware.
+func (r *registry) RecordRequest(path string, code int, elapsed time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requests[requestKey{Path: path, Code: code}]++
+	r.durationSum[path] += elapsed.Seconds()
+	r.durationCount[path]++
+}
+
+// write renders the registry. Series are sorted so the output is stable, which
+// makes it diffable and testable.
+func (r *registry) write(w http.ResponseWriter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	fmt.Fprint(w, "# HELP {{ .MetricPrefix }}_uptime_seconds Seconds since the process started.\n")
+	fmt.Fprint(w, "# TYPE {{ .MetricPrefix }}_uptime_seconds gauge\n")
+	fmt.Fprintf(w, "{{ .MetricPrefix }}_uptime_seconds %f\n", time.Since(r.started).Seconds())
+
+	keys := make([]requestKey, 0, len(r.requests))
+	for key := range r.requests {
+		keys = append(keys, key)
+	}
+	slices.SortFunc(keys, func(a, b requestKey) int {
+		if c := cmp.Compare(a.Path, b.Path); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Code, b.Code)
+	})
+
+	fmt.Fprint(w, "# HELP {{ .MetricPrefix }}_requests_total HTTP requests served.\n")
+	fmt.Fprint(w, "# TYPE {{ .MetricPrefix }}_requests_total counter\n")
+	for _, key := range keys {
+		fmt.Fprintf(w, "{{ .MetricPrefix }}_requests_total{path=%q,code=\"%d\"} %d\n",
+			key.Path, key.Code, r.requests[key])
+	}
+
+	fmt.Fprint(w, "# HELP {{ .MetricPrefix }}_request_duration_seconds_sum Time spent serving requests.\n")
+	fmt.Fprint(w, "# TYPE {{ .MetricPrefix }}_request_duration_seconds_sum counter\n")
+	for _, path := range sortedKeys(r.durationSum) {
+		fmt.Fprintf(w, "{{ .MetricPrefix }}_request_duration_seconds_sum{path=%q} %f\n", path, r.durationSum[path])
+	}
+
+	fmt.Fprint(w, "# HELP {{ .MetricPrefix }}_request_duration_seconds_count Requests observed.\n")
+	fmt.Fprint(w, "# TYPE {{ .MetricPrefix }}_request_duration_seconds_count counter\n")
+	for _, path := range sortedKeys(r.durationCount) {
+		fmt.Fprintf(w, "{{ .MetricPrefix }}_request_duration_seconds_count{path=%q} %d\n", path, r.durationCount[path])
+	}
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func metricsHandler(_ *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		metrics.write(w)
+	})
+}
+
+// instrument records every request against the registry.
+func instrument(path string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		next(rec, r)
+		metrics.RecordRequest(path, rec.code, time.Since(start))
+	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.code = code
+	r.ResponseWriter.WriteHeader(code)
+}

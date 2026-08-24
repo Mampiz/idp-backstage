@@ -1,0 +1,24 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ .Name }}
+  description: {{ .Description }}
+  annotations:
+    github.com/project-slug: {{ .Owner }}/{{ .Name }}
+    backstage.io/source-location: url:https://github.com/{{ .Owner }}/{{ .Name }}/
+    # Read by the webapp-status plugin to find the custom resource this
+    # component is running as.
+    platform.miportfolio.com/webapp: {{ .Namespace }}/{{ .Name }}
+  tags:
+    - go
+    - kubernetes
+    - scaffolded
+  links:
+    - url: https://github.com/{{ .Owner }}/{{ .Name }}
+      title: Source
+      icon: github
+spec:
+  type: service
+  lifecycle: experimental
+  owner: {{ .CatalogOwner }}
+  system: system:default/idp

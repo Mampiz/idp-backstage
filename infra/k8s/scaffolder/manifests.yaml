@@ -1,0 +1,133 @@
+# In-cluster deployment of the scaffolder service.
+#
+# It runs inside the cluster because it has to apply WebApp custom resources,
+# which means it needs cluster credentials. Running it on the host against a
+# kubeconfig works too and is what "make scaffolder-run" does for the dev loop,
+# but in-cluster is the shape that has real RBAC behind it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaffolder
+  namespace: idp-system
+---
+# Writing custom resources: the operator publishes an editor ClusterRole with
+# exactly these verbs, so it is bound rather than copied.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: scaffolder-webapp-editor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webapp-operator-webapp-editor-role
+subjects:
+  - kind: ServiceAccount
+    name: scaffolder
+    namespace: idp-system
+---
+# Scaffolded services land in their own namespace, which the service creates on
+# first use. This is the only permission it needs beyond the custom resource.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: scaffolder-namespace-manager
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: scaffolder-namespace-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: scaffolder-namespace-manager
+subjects:
+  - kind: ServiceAccount
+    name: scaffolder
+    namespace: idp-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaffolder
+  namespace: idp-system
+  labels:
+    app.kubernetes.io/name: scaffolder
+    app.kubernetes.io/part-of: idp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scaffolder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scaffolder
+        app.kubernetes.io/part-of: idp
+    spec:
+      serviceAccountName: scaffolder
+      securityContext:
+        runAsNonRoot: true
+        # The distroless image names its user, and the kubelet cannot verify a
+        # non-numeric user against runAsNonRoot.
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: scaffolder
+          image: idp/scaffolder:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+          env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: scaffolder-github
+                  key: token
+            - name: GITHUB_OWNER
+              value: Mampiz
+            - name: WEBAPP_NAMESPACE
+              value: idp-apps
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scaffolder
+  namespace: idp-system
+spec:
+  # NodePort 30080 is mapped to the host by the kind config, so Backstage can
+  # reach it at http://localhost:30080 with no port-forward.
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: scaffolder
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+      nodePort: 30080

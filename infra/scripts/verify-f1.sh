@@ -11,7 +11,7 @@ cd "${ROOT}"
 [ -f .env ] && set -a && . ./.env && set +a
 
 BACKEND_URL="http://localhost:7007"
-DISCOVERY_URL="http://localhost:8082"
+DISCOVERY_URL="http://localhost:30080"
 APP_URL="http://localhost:3000"
 LOG="${ROOT}/backstage-dev.log"
 PID=""
@@ -40,7 +40,7 @@ port_busy() { ss -ltn 2>/dev/null | grep -q ":$1[[:space:]]"; }
 [ -n "${GITHUB_TOKEN:-}" ] || fail "GITHUB_TOKEN is not exported - run: export GITHUB_TOKEN=\$(gh auth token)"
 
 step "1. Postgres and the discovery service are up"
-docker compose up -d postgres scaffolder >/dev/null 2>&1
+docker compose up -d postgres >/dev/null 2>&1
 for _ in $(seq 1 30); do
   docker compose exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1 && break
   sleep 1
@@ -53,7 +53,8 @@ for _ in $(seq 1 30); do
   curl -fsS "${DISCOVERY_URL}/healthz" >/dev/null 2>&1 && break
   sleep 1
 done
-curl -fsS "${DISCOVERY_URL}/healthz" >/dev/null 2>&1 || fail "the scaffolder service is not answering on ${DISCOVERY_URL}"
+curl -fsS "${DISCOVERY_URL}/healthz" >/dev/null 2>&1 \
+  || fail "the scaffolder service is not answering on ${DISCOVERY_URL} - run 'make scaffolder-deploy'"
 discovery="$(curl -fsS "${DISCOVERY_URL}/catalog/discovery")"
 echo "${discovery}" | grep -q 'kind: Location' || fail "the discovery endpoint did not return a Location entity"
 pass "discovery service serving a Location entity"
@@ -123,7 +124,7 @@ echo "${disc_body:-}" | grep -q '"name":"idp-backstage"' \
   || fail "component/default/idp-backstage was not discovered - the Location entity did not reach the catalog"
 origin="$(echo "${disc_body}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["metadata"]["annotations"]["backstage.io/managed-by-origin-location"])')"
 case "${origin}" in
-  *localhost:8082*) pass "idp-backstage came in through the Go discovery service (${origin})" ;;
+  *localhost:30080*) pass "idp-backstage came in through the Go discovery service (${origin})" ;;
   *) fail "idp-backstage was ingested from ${origin}, not from the discovery service" ;;
 esac
 

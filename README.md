@@ -20,6 +20,10 @@ TypeScript side is only ever an HTTP client to it.
 ## Running it locally
 
 ```bash
+# The token needs repo + workflow. The gh CLI does not ask for "workflow" by
+# default, and without it GitHub refuses to commit .github/workflows/ files,
+# reporting a bare 404 that looks like a missing repository.
+gh auth refresh -h github.com -s workflow
 export GITHUB_TOKEN=$(gh auth token)   # never written to disk, not even to .env
 cp .env.example .env                   # non-secret local config
 make bootstrap                         # kind + cert-manager + webapp-operator

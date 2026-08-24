@@ -1,0 +1,97 @@
+// {{ .Name }} is a scaffolded HTTP service.
+//
+// It is deliberately standard library only: nothing here needs a framework, and
+// a service you can read top to bottom is easier to hand over.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
+)
+
+// ready flips once startup work is done. Liveness and readiness answer
+// different questions and are wired to different things on purpose.
+var ready atomic.Bool
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		addr = ":{{ .Port }}"
+	}
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           routes(logger),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("listening", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	ready.Store(true)
+
+	select {
+	case err := <-errCh:
+		logger.Error("server failed", "error", err)
+		os.Exit(1)
+	case <-ctx.Done():
+		logger.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("shutdown failed", "error", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func routes(logger *slog.Logger) http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /", instrument("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"service": "{{ .Name }}"})
+	}))
+
+	// Liveness: the process is up. Never tie this to a dependency, or a
+	// dependency outage turns into a restart loop.
+	mux.HandleFunc("GET /healthz", instrument("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}))
+
+	// Readiness: the process can serve traffic.
+	mux.HandleFunc("GET /readyz", instrument("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if !ready.Load() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "starting"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}))
+
+	mux.Handle("GET /metrics", metricsHandler(logger))
+
+	return mux
+}
+
+func writeJSON(w http.ResponseWriter, code int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(body)
+}

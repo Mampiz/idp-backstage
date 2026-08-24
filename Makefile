@@ -14,6 +14,7 @@ CERT_MANAGER_VERSION ?= v1.21.1
 OPERATOR_VERSION     ?= v1.0.0
 OPERATOR_INSTALL_URL ?= https://raw.githubusercontent.com/Mampiz/webapp-operator/$(OPERATOR_VERSION)/dist/install.yaml
 STATUS_API_IMAGE     ?= idp/status-api:dev
+SCAFFOLDER_IMAGE     ?= idp/scaffolder:dev
 CERT_MANAGER_URL     ?= https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
 KUBECTL := kubectl --context=$(KUBE_CONTEXT)
@@ -23,6 +24,7 @@ GO_SERVICES := services/status-api services/scaffolder
 # Loaded here and exported so Backstage and the Go services pick them up.
 -include .env
 export
+GITHUB_OWNER  ?= Mampiz
 POSTGRES_HOST ?= localhost
 POSTGRES_PORT ?= 5432
 POSTGRES_USER ?= backstage
@@ -133,14 +135,7 @@ require-github-token:
 		exit 1; }
 
 .PHONY: services-up
-services-up: require-github-token ## Start the Go services that Backstage depends on
-	docker compose up -d --build scaffolder
-	@until curl -fsS http://localhost:8082/healthz >/dev/null 2>&1; do sleep 1; done
-	@echo "scaffolder ready on http://localhost:8082"
-
-.PHONY: services-down
-services-down: ## Stop the Go services
-	docker compose stop scaffolder
+services-up: status-api-deploy scaffolder-deploy ## Deploy both Go services into the cluster
 
 .PHONY: dev
 dev: require-github-token db-up services-up ## Run the whole platform locally
@@ -170,6 +165,38 @@ status-api-deploy: status-api-image ## Deploy the status API into the cluster
 .PHONY: verify-f2
 verify-f2: ## F2 verifier: unit tests, plus the API serving the real cluster contents
 	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f2.sh
+
+##@ F3 - Scaffolder
+
+.PHONY: scaffolder-run
+scaffolder-run: require-github-token ## Run the scaffolder locally against the kind cluster
+	KUBE_CONTEXT=$(KUBE_CONTEXT) GITHUB_OWNER=$(GITHUB_OWNER) go run ./services/scaffolder/cmd/scaffolder
+
+.PHONY: scaffolder-image
+scaffolder-image: ## Build the scaffolder image and load it into kind
+	docker build -t $(SCAFFOLDER_IMAGE) ./services/scaffolder
+	kind load docker-image $(SCAFFOLDER_IMAGE) --name $(CLUSTER_NAME)
+
+.PHONY: scaffolder-secret
+scaffolder-secret: require-github-token ## Create the GitHub token secret from the environment
+	@# Piped through apply so the token never lands in a file on disk.
+	@$(KUBECTL) create namespace idp-system --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+	@$(KUBECTL) create secret generic scaffolder-github \
+		--namespace idp-system \
+		--from-literal=token="$$GITHUB_TOKEN" \
+		--dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+	@echo "secret idp-system/scaffolder-github updated from \$$GITHUB_TOKEN"
+
+.PHONY: scaffolder-deploy
+scaffolder-deploy: scaffolder-image scaffolder-secret ## Deploy the scaffolder into the cluster
+	$(KUBECTL) apply -f infra/k8s/scaffolder/manifests.yaml
+	$(KUBECTL) -n idp-system rollout restart deployment/scaffolder
+	$(KUBECTL) -n idp-system rollout status deployment/scaffolder --timeout=180s
+	@echo "scaffolder available on http://localhost:30080"
+
+.PHONY: verify-f3
+verify-f3: require-github-token ## F3 verifier: a real repository, a real custom resource, real pods
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f3.sh
 
 ##@ Utils
 

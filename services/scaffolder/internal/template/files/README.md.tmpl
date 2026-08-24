@@ -1,0 +1,38 @@
+# {{ .Name }}
+
+{{ .Description }}
+
+Scaffolded by the [IDP](https://github.com/{{ .Owner }}/idp-backstage). Creating this
+repository also applied a `WebApp` custom resource to the cluster, so the service is
+already running: the operator reconciled it into a Deployment, a Service and, if
+autoscaling was requested, an HPA.
+
+## Endpoints
+
+| Path | Purpose |
+|------|---------|
+| `/` | Service identity |
+| `/healthz` | Liveness: the process is up. Never wire this to a dependency, or a dependency outage becomes a restart loop |
+| `/readyz` | Readiness: the process can serve traffic |
+| `/metrics` | Prometheus metrics |
+
+## Local development
+
+```bash
+make run     # run on :{{ .Port }}
+make test
+make image   # build the container image
+```
+
+## How it gets deployed
+
+Pushing to `{{ .DefaultBranch }}` builds an image and publishes it to
+`ghcr.io/{{ .Owner }}/{{ .Name }}` tagged with the commit sha. Point `spec.image` in
+[`webapp.yaml`](webapp.yaml) at the new tag and apply it:
+
+```bash
+make deploy
+```
+
+Tags are always explicit: the operator's admission webhook rejects `:latest` and
+untagged images, so an image reference you cannot pin is an image it will not run.

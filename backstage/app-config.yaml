@@ -133,7 +133,7 @@ backend:
   # from it has to be allowed explicitly.
   reading:
     allow:
-      - host: localhost:8082
+      - host: localhost:30080
   # Static token used only by the local phase verifiers to call the backend APIs
   # without going through the browser guest session.
   auth:
@@ -213,7 +213,7 @@ catalog:
     # live under a personal account, so the discovery is done in Go and handed
     # over as a plain Location entity. See PROGRESS.md (F1).
     - type: url
-      target: http://localhost:8082/catalog/discovery
+      target: http://localhost:30080/catalog/discovery
       rules:
         - allow: [Component, System, API, Resource, Location, Group]
 

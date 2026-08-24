@@ -1,0 +1,14 @@
+# The custom resource that makes this service run. The platform applied this for
+# you when the repository was created; it is committed here so the desired state
+# lives with the code and can be changed through a pull request.
+apiVersion: platform.miportfolio.com/v1
+kind: WebApp
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+spec:
+  # An explicit, non-latest tag is mandatory: the operator's validating webhook
+  # rejects ":latest" and implicit tags outright.
+  image: {{ .Image }}
+  replicas: {{ .Replicas }}
+  port: {{ .Port }}

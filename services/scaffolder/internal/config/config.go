@@ -26,6 +26,10 @@ type Config struct {
 	// DiscoveryTTL is how long a discovery result is served from cache before
 	// GitHub is queried again.
 	DiscoveryTTL time.Duration
+	// Namespace is where scaffolded WebApp custom resources are applied.
+	Namespace string
+	// PrivateRepos creates scaffolded repositories as private.
+	PrivateRepos bool
 }
 
 // ErrMissingToken is returned when GITHUB_TOKEN is not set in the environment.
@@ -39,6 +43,8 @@ func FromEnv() (Config, error) {
 		Owner:        envOr("GITHUB_OWNER", ""),
 		CatalogPath:  envOr("CATALOG_PATH", "catalog-info.yaml"),
 		DiscoveryTTL: 5 * time.Minute,
+		Namespace:    envOr("WEBAPP_NAMESPACE", "idp-apps"),
+		PrivateRepos: os.Getenv("PRIVATE_REPOS") == "true",
 	}
 
 	if cfg.GitHubToken == "" {
