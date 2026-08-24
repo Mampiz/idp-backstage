@@ -1,6 +1,13 @@
-# PROGRESS
+# Build log
 
-State of the phase graph. A phase is not done until its verifier exits 0.
+How this platform was built, in the order it was built, with the reasoning behind
+each decision and the problems found on the way. It is an engineering log, not
+documentation: if you are trying to *use* the platform, start at
+[docs/](docs/index.md) or the [README](README.md).
+
+Work was organised in phases, and a phase was not considered done until a command
+exited zero. Those commands still exist and still run — see
+[contributing](docs/contributing.md#end-to-end-checks).
 
 | Phase | What | State | Verifier |
 |-------|------|-------|----------|

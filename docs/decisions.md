@@ -1,8 +1,7 @@
-# Decisions worth arguing about
+# Design decisions
 
-The full record, phase by phase, is in
-[PROGRESS.md](https://github.com/Mampiz/idp-backstage/blob/main/PROGRESS.md).
-These are the ones where the reasoning matters more than the outcome.
+The choices that were not obvious, with the reasoning and what they cost. If you
+are wondering "why is it done that way", this is the page.
 
 ## The failure policy: a repository is never deleted
 

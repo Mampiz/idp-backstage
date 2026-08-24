@@ -60,7 +60,15 @@ grep -qi 'Internal Developer Platform' /tmp/techdocs-index.html \
   || fail "the served page is not the documentation"
 pass "the portal serves the documentation it built"
 
-step "4. The README carries the diagram and the demo"
+step "4. The screenshots the documentation references exist"
+for shot in catalog template-form webapp-tab techdocs; do
+  file="docs/assets/${shot}.png"
+  [ -f "${file}" ] || fail "${file} is missing - regenerate with 'make screenshots'"
+  head -c 4 "${file}" | grep -q 'PNG' || fail "${file} is not a PNG"
+done
+pass "all four screenshots present"
+
+step "5. The README carries the diagram and the demo"
 grep -q '```mermaid' README.md || fail "the README has no architecture diagram"
 grep -q "${GIF}" README.md || fail "the README does not reference ${GIF}"
 [ -f "${GIF}" ] || fail "${GIF} is missing"

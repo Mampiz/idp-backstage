@@ -224,6 +224,10 @@ docs-build: ## Build the TechDocs site locally with the official image
 record-demo: require-github-token ## Re-record the README demo (creates a real repository)
 	./infra/scripts/record-demo.sh
 
+.PHONY: screenshots
+screenshots: ## Regenerate the screenshots used in the docs (needs Backstage running)
+	./infra/scripts/screenshots.sh
+
 .PHONY: verify-f6
 verify-f6: ## F6 verifier: the docs build, the portal serves them, and the demo exists
 	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f6.sh

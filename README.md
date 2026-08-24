@@ -1,91 +1,58 @@
-# idp-backstage
+# Internal Developer Platform
 
-**Filling in one form produces a GitHub repository and a running workload in
-Kubernetes.** No copy-pasted manifest, no second tool, no ticket to the platform
-team.
+[![go](https://github.com/Mampiz/idp-backstage/actions/workflows/go.yml/badge.svg)](https://github.com/Mampiz/idp-backstage/actions/workflows/go.yml)
+[![backstage](https://github.com/Mampiz/idp-backstage/actions/workflows/backstage.yml/badge.svg)](https://github.com/Mampiz/idp-backstage/actions/workflows/backstage.yml)
+[![e2e](https://github.com/Mampiz/idp-backstage/actions/workflows/e2e.yml/badge.svg)](https://github.com/Mampiz/idp-backstage/actions/workflows/e2e.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-The piece that makes it possible is a Kubernetes operator I wrote,
-[webapp-operator](https://github.com/Mampiz/webapp-operator): it reconciles a
-`WebApp` custom resource into a Deployment, a Service and an optional
-HorizontalPodAutoscaler. This repository is what turns that operator into a
-self-service product.
+**Create a service from a form and it is running in Kubernetes before you finish
+reading the confirmation page.** One step produces a GitHub repository with CI, a
+container build and health endpoints, *and* a live workload — no manifest to
+copy, no second tool, no ticket to the platform team.
 
-![The whole flow: form to repository to running workload to live status](docs/assets/demo.gif)
+![Creating a service, end to end](docs/assets/demo.gif)
 
-*One form. A repository, a `WebApp` custom resource, running pods, and a tab
-that follows the cluster — the last few seconds are a `kubectl scale` happening
-outside Backstage entirely.*
+Everything in that recording is real: a repository is created, a custom resource
+is applied, pods start, and the last few seconds are somebody running
+`kubectl scale` from a terminal while the page follows along.
 
----
+## What you get
 
-## What this demonstrates
+Filling in the template produces:
 
-**That a platform is a product, not a pile of YAML.** The developer-facing
-surface is one form with six fields. Everything behind it — validating the image
-against what admission will accept, creating the repository, applying the custom
-resource, deciding what happens when half of that succeeds — is a service with
-tests, not a template with `if` statements.
+- **A repository** — a Go service with `/healthz`, `/readyz` and `/metrics`, a
+  distroless container build, a Makefile, a GitHub Actions workflow publishing to
+  ghcr.io, its own documentation, and the `webapp.yaml` describing how it runs.
+- **A running workload** — a `WebApp` custom resource that
+  [webapp-operator](https://github.com/Mampiz/webapp-operator) reconciles into a
+  Deployment, a Service and, on request, a HorizontalPodAutoscaler.
+- **A catalog entry** with a tab showing the live state of the cluster.
 
-**That "done" means a command exits zero.** Six phases, six verifiers. Each one
-asserts against the cluster rather than against itself: the status API's numbers
-are compared field by field with `kubectl`'s, and the frontend is checked by a
-real browser that watches the page follow a `kubectl scale`. Several include
-negative assertions — F0 fails if a `WebApp` with a `:latest` image is *accepted*,
-because a green run against broken admission webhooks is the failure that is
-hardest to notice.
+![The WebApp tab](docs/assets/webapp-tab.png)
 
-**That failure states are designed, not discovered.** If the repository is created
-and the custom resource cannot be applied, nothing is deleted: the repository is
-tagged `idp-provisioning-incomplete`, the API answers `207` naming the step that
-failed, and re-sending the same request finishes the job. Rolling back would mean
-deleting a GitHub repository we might not have created.
+## Quick start
 
-**That consuming somebody else's operator means reading it first.** Three things
-in the operator shaped this platform before a line of it was written: its
-`dist/install.yaml` needs cert-manager and does not say so; its ClusterRole is
-missing a rule for `events`, so every event it emits is silently rejected; and its
-validating webhook rejects `:latest` — which its own shipped sample uses.
+```bash
+# The workflow scope is required: scaffolded repositories contain a GitHub
+# Actions workflow, and GitHub refuses to write one without it.
+unset GITHUB_TOKEN
+gh auth refresh -h github.com -s workflow
+export GITHUB_TOKEN=$(gh auth token)   # never written to disk
 
-**That knowing where logic belongs is the skill.** Backstage core is TypeScript
-and that cannot be avoided. Everything else is Go. The only TypeScript in the
-provisioning path is seventy lines that build a request and map status codes to
-messages, because validation, ordering, idempotency and the failure policy are all
-things you want to be able to run `go test` on.
-
----
-
-## The flow
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Dev as Developer
-    participant BS as Backstage
-    participant SC as scaffolder (Go)
-    participant GH as GitHub
-    participant K8s as Kubernetes API
-    participant OP as webapp-operator
-    participant ST as status-api (Go)
-
-    Dev->>BS: Fills in the software template
-    BS->>SC: POST /scaffold
-    SC->>SC: Validates the image the way the operator's webhook will
-    SC->>GH: Creates the repository, one commit with the whole template
-    SC->>K8s: Applies the WebApp custom resource
-    K8s->>OP: Watch event
-    OP->>K8s: Deployment + Service + HPA
-    OP->>K8s: status.conditions[Available]
-    Dev->>BS: Opens the WebApp tab
-    BS->>ST: Reads through the proxy
-    ST->>K8s: Serves from its informer cache
-    ST-->>Dev: Live state: replicas, image, condition
+cp .env.example .env
+make bootstrap    # kind cluster + cert-manager + webapp-operator (~75s)
+make verify-f0    # prove that much works
+make dev          # Postgres, both Go services, Backstage
 ```
 
-## Architecture
+Backstage comes up on <http://localhost:3000>. Full instructions in
+[Getting started](docs/getting-started.md); `make help` lists every target.
+
+## How it works
 
 ```mermaid
 flowchart TB
-    subgraph host["Developer machine"]
+    subgraph host["Your machine"]
         BS["<b>Backstage</b><br/>catalog · template · WebApp tab"]
         PG[("Postgres")]
     end
@@ -108,7 +75,7 @@ flowchart TB
     BS -->|"POST /scaffold"| SC
     BS -->|"proxy → GET /api/webapps"| ST
     BS --- PG
-    SC -->|"repo + one commit"| GH
+    SC -->|"repository + one commit"| GH
     SC -->|"server-side apply"| CR
     SC -->|"discovery Location"| BS
     ST -->|"watch"| CR
@@ -118,48 +85,38 @@ flowchart TB
     CM -.->|"CA injection"| OP
 ```
 
-## Verifiers
+Backstage core is TypeScript and that cannot be avoided. Everything else is Go:
+if a piece of logic can live in a Go service, it lives in a Go service, and the
+TypeScript side is only ever an HTTP client to it. Validation, ordering,
+idempotency and failure handling are things you want to be able to run `go test`
+on — so the only TypeScript in the provisioning path is about seventy lines that
+build a request and turn status codes into readable messages.
 
-A phase is done when its command exits zero. They run locally and in CI.
+## Documentation
 
-| Command | What it proves |
-|---------|----------------|
-| `make verify-f0` | The operator reconciles a real `WebApp` into Ready pods, and refuses a `:latest` image |
-| `make verify-f1` | Backstage runs on Postgres, discovery reaches the catalog, and the data survives a database restart |
-| `make verify-f2` | The status API's replicas, image and condition match `kubectl` field by field |
-| `make verify-f3` | One `curl` produces a real repository, a real custom resource and Ready pods — twice, idempotently |
-| `make verify-f4` | The software template does the same with nothing done by hand |
-| `make verify-f5` | A real browser opens the WebApp tab and watches it follow a `kubectl scale` |
-| `make verify-f6` | The docs build, the portal serves them, and the README carries the diagram and the demo |
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | Run the whole platform locally |
+| [Creating a service](docs/creating-a-service.md) | The form, the repository, changing what runs |
+| [Architecture](docs/architecture.md) | The components and why each exists |
+| [Troubleshooting](docs/troubleshooting.md) | The failures you will actually hit |
+| [Design decisions](docs/decisions.md) | The choices that were not obvious |
+| [Contributing](CONTRIBUTING.md) | Layout, tests, CI |
 
-## Running it
+The same documentation is served as TechDocs inside the portal.
 
-```bash
-unset GITHUB_TOKEN
-gh auth refresh -h github.com -s workflow   # the workflow scope is required
-export GITHUB_TOKEN=$(gh auth token)        # never written to disk
+## A note on failure
 
-cp .env.example .env
-make bootstrap    # kind + cert-manager + webapp-operator
-make verify-f0
-make dev          # Postgres, both Go services in the cluster, Backstage
-```
+If the repository is created and the custom resource cannot be applied, **nothing
+is deleted**. Rolling back would mean deleting a GitHub repository that might not
+have been ours to delete. Instead the repository is tagged
+`idp-provisioning-incomplete`, the API answers `207` naming the step that failed,
+and re-sending the same request finishes the job, because every step is
+idempotent.
 
-Full documentation is in [`docs/`](docs/) and is served as TechDocs inside the
-portal. `make help` lists every target.
+That trade-off is deliberate: an abandoned failed run leaves a repository behind,
+which is a price worth paying to never destroy something we did not create.
 
-## Layout
+## License
 
-```
-backstage/                    Backstage app (TypeScript, kept to a minimum)
-  plugins/webapp-status/      the WebApp entity tab
-services/status-api/    [GO]  reads WebApp CRs with client-go, serves them over REST
-services/scaffolder/    [GO]  GitHub-facing: discovery, repo creation, applying the CR
-templates/webapp-service/     the software template
-catalog/                      catalog entities owned by this repo
-infra/                        kind cluster, operator install, phase verifiers
-docs/                         TechDocs
-```
-
-Every decision, and every problem found on the way, is recorded phase by phase in
-[PROGRESS.md](PROGRESS.md).
+[Apache 2.0](LICENSE).

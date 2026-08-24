@@ -1,23 +1,41 @@
 # Internal Developer Platform
 
-Filling in one form in Backstage produces a GitHub repository **and** a running
-workload in Kubernetes. No copy-pasted manifest, no second tool, no "now ask the
-platform team to deploy it".
+Create a service from a form and it is running in Kubernetes before you have
+finished reading the confirmation page. One step produces a GitHub repository
+with CI, a container build and health endpoints, **and** a workload on the
+cluster — no manifest to copy, no second tool, no ticket to the platform team.
 
-The piece that makes that possible is a custom Kubernetes operator,
-[webapp-operator](https://github.com/Mampiz/webapp-operator), which reconciles a
-`WebApp` custom resource into a Deployment, a Service and, when asked for, a
-HorizontalPodAutoscaler. This platform is what turns that operator into a
-self-service product.
+![The catalog](assets/catalog.png)
 
-![The whole flow](assets/demo.gif)
+## The whole flow
 
-## What happens when somebody uses it
+![Creating a service, end to end](assets/demo.gif)
+
+Everything in that recording is real: a GitHub repository is created, a custom
+resource is applied, pods start, and the last few seconds are somebody running
+`kubectl scale` outside Backstage while the page follows along.
+
+## What you get
+
+Filling in the **Go service running on Kubernetes** template produces:
+
+- **A repository** containing a Go service with `/healthz`, `/readyz` and
+  `/metrics`, a distroless container build, a Makefile, a GitHub Actions
+  workflow that publishes to ghcr.io, its own documentation, and the
+  `webapp.yaml` that describes how it runs.
+- **A running workload**: a `WebApp` custom resource that
+  [webapp-operator](https://github.com/Mampiz/webapp-operator) reconciles into a
+  Deployment, a Service and, if you ask for it, a HorizontalPodAutoscaler.
+- **A catalog entry** with a **WebApp** tab showing the live state of the
+  cluster: the Available condition, ready and desired replicas, and the image
+  actually running.
+
+## How it fits together
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Dev as Developer
+    actor Dev as You
     participant BS as Backstage
     participant SC as scaffolder (Go)
     participant GH as GitHub
@@ -25,36 +43,36 @@ sequenceDiagram
     participant OP as webapp-operator
     participant ST as status-api (Go)
 
-    Dev->>BS: Fills in the software template
+    Dev->>BS: Fill in the template
     BS->>SC: POST /scaffold
-    SC->>SC: Validates the image the way the operator's webhook will
-    SC->>GH: Creates the repository, one commit with the whole template
-    SC->>K8s: Applies the WebApp custom resource
+    SC->>SC: Validate the image the way admission will
+    SC->>GH: Create the repository, one commit
+    SC->>K8s: Apply the WebApp custom resource
     K8s->>OP: Watch event
     OP->>K8s: Deployment + Service + HPA
     OP->>K8s: status.conditions[Available]
-    Dev->>BS: Opens the WebApp tab
-    BS->>ST: Reads through the proxy
-    ST->>K8s: Serves from its informer cache
-    ST-->>Dev: Live state: replicas, image, condition
+    Dev->>BS: Open the WebApp tab
+    BS->>ST: Read through the proxy
+    ST->>K8s: Serve from the informer cache
+    ST-->>Dev: Replicas, image, condition
 ```
 
-## The design rule
+## The documentation lives in the portal
 
-Backstage core is TypeScript and that cannot be avoided. Everything else is Go:
-if a piece of logic can live in a Go service, it lives in a Go service, and the
-TypeScript side is only ever an HTTP client to it.
+These pages are served as TechDocs inside Backstage, next to the components they
+describe:
 
-That rule is not decoration. It is why the scaffolder's validation, ordering,
-idempotency and failure policy are all testable with `go test`, and why the only
-TypeScript in the provisioning path is seventy lines that build a request and map
-status codes to messages.
+![TechDocs in the portal](assets/techdocs.png)
 
 ## Where to go next
 
-- [How it works](how-it-works.md) — the components and why each one exists.
-- [The phases and their verifiers](verifiers.md) — how every claim on this page
-  is checked by a command that exits non-zero when it is not true.
-- [Running it locally](running-locally.md).
-- [Decisions worth arguing about](decisions.md) — the choices that were not
-  obvious, with the reasoning and the trade-off.
+- **[Getting started](getting-started.md)** — run the whole platform on your
+  machine in about five minutes.
+- **[Creating a service](creating-a-service.md)** — the form, what lands in your
+  repository, and how to change what runs.
+- **[Architecture](architecture.md)** — the components and why each one exists.
+- **[Troubleshooting](troubleshooting.md)** — the failures you are most likely to
+  hit, and what they actually mean.
+- **[Design decisions](decisions.md)** — the choices that were not obvious.
+- **[Contributing](contributing.md)** — repository layout, tests, and how to run
+  them.

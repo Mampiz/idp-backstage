@@ -28,7 +28,7 @@ rm -rf "${RECORDING}"
 ( cd backstage && \
   KUBE_CONTEXT="${CONTEXT}" GITHUB_OWNER="${GITHUB_OWNER:-Mampiz}" \
   LD_LIBRARY_PATH="${LIBS}:${LD_LIBRARY_PATH:-}" \
-  yarn playwright test --config demo/playwright.demo.config.ts )
+  yarn playwright test --config demo/playwright.demo.config.ts demo/demo.spec.ts )
 
 video="$(find "${RECORDING}" -name '*.webm' | head -1)"
 [ -n "${video}" ] || { echo "no video was produced" >&2; exit 1; }
@@ -39,10 +39,10 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 cp "${video}" "${work}/in.webm"
 
-# Sped up and downscaled: a faithful real-time GIF of this flow would be tens of
-# megabytes and nobody would watch it to the end. A generated palette keeps the
-# UI legible at 10 fps.
-filters="setpts=${DEMO_SPEED:-0.5}*PTS,fps=10,scale=${DEMO_WIDTH:-960}:-1:flags=lanczos"
+# Barely sped up on purpose. An aggressive speed-up makes the file small and the
+# demo impossible to follow, which defeats the point of having one. A generated
+# palette keeps the UI legible after quantisation.
+filters="setpts=${DEMO_SPEED:-0.9}*PTS,fps=${DEMO_FPS:-12},scale=${DEMO_WIDTH:-900}:-1:flags=lanczos"
 
 echo "==> Converting with ${FFMPEG_IMAGE}"
 docker run --rm -v "${work}":/w -w /w "${FFMPEG_IMAGE}" \

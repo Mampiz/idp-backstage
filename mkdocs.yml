@@ -1,14 +1,21 @@
 site_name: Internal Developer Platform
 site_description: >-
-  A Backstage portal whose scaffolder does not stop at creating a repository:
-  it puts the service on the cluster.
+  Create a service from a form and it is running in Kubernetes before you finish
+  reading the confirmation page.
 
 nav:
   - Overview: index.md
-  - How it works: how-it-works.md
-  - The phases and their verifiers: verifiers.md
-  - Running it locally: running-locally.md
-  - Decisions worth arguing about: decisions.md
+  - Getting started: getting-started.md
+  - Creating a service: creating-a-service.md
+  - Architecture: architecture.md
+  - Troubleshooting: troubleshooting.md
+  - Design decisions: decisions.md
+  - Contributing: contributing.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
 
 plugins:
   - techdocs-core
