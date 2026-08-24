@@ -13,6 +13,7 @@ KIND_CONFIG          ?= infra/kind/idp-local.yaml
 CERT_MANAGER_VERSION ?= v1.21.1
 OPERATOR_VERSION     ?= v1.0.0
 OPERATOR_INSTALL_URL ?= https://raw.githubusercontent.com/Mampiz/webapp-operator/$(OPERATOR_VERSION)/dist/install.yaml
+STATUS_API_IMAGE     ?= idp/status-api:dev
 CERT_MANAGER_URL     ?= https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
 KUBECTL := kubectl --context=$(KUBE_CONTEXT)
@@ -80,7 +81,10 @@ clean-smoke: ## Remove the F0 smoke-test resources
 
 .PHONY: tidy
 tidy: ## go mod tidy on every Go service
-	@for s in $(GO_SERVICES); do (cd $$s && go mod tidy); done
+	@# GOWORK=off on purpose: inside go.work the workspace supplies the build
+	@# list, so go.sum can stay incomplete and only fail later in a container
+	@# build, where there is no workspace.
+	@for s in $(GO_SERVICES); do (cd $$s && GOWORK=off go mod tidy); done
 
 .PHONY: build
 build: ## Build every Go service into bin/
@@ -143,6 +147,27 @@ dev: require-github-token db-up services-up ## Run the whole platform locally
 .PHONY: verify-f1
 verify-f1: require-github-token ## F1 verifier: Backstage boots on Postgres, serves the catalog, and survives a DB restart
 	@./infra/scripts/verify-f1.sh
+
+##@ F2 - Status API
+
+.PHONY: status-api-run
+status-api-run: ## Run the status API locally against the kind cluster
+	KUBE_CONTEXT=$(KUBE_CONTEXT) go run ./services/status-api/cmd/status-api
+
+.PHONY: status-api-image
+status-api-image: ## Build the status API image and load it into kind
+	docker build -t $(STATUS_API_IMAGE) ./services/status-api
+	kind load docker-image $(STATUS_API_IMAGE) --name $(CLUSTER_NAME)
+
+.PHONY: status-api-deploy
+status-api-deploy: status-api-image ## Deploy the status API into the cluster
+	$(KUBECTL) apply -f infra/k8s/status-api/manifests.yaml
+	$(KUBECTL) -n idp-system rollout status deployment/status-api --timeout=180s
+	@echo "status-api available on http://localhost:30081"
+
+.PHONY: verify-f2
+verify-f2: ## F2 verifier: unit tests, plus the API serving the real cluster contents
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f2.sh
 
 ##@ Utils
 

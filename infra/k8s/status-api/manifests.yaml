@@ -1,0 +1,134 @@
+# In-cluster deployment of the status API.
+#
+# The service works from a laptop through a kubeconfig as well, which is what
+# the phase verifier uses, but in-cluster is the real shape: a ServiceAccount
+# with exactly the permissions it needs and nothing else.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: idp-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: status-api
+  namespace: idp-system
+---
+# Read access to the custom resources is not defined here on purpose: the
+# operator already publishes a viewer ClusterRole with exactly these verbs
+# (get/list/watch on webapps, get on webapps/status). Re-declaring it would
+# mean maintaining a second copy that silently drifts from the operator's.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: status-api-webapp-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webapp-operator-webapp-viewer-role
+subjects:
+  - kind: ServiceAccount
+    name: status-api
+    namespace: idp-system
+---
+# The Deployments the operator creates are not covered by that role, and this is
+# the only extra thing the service reads: ready replica counts and the image
+# actually running.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: status-api-deployment-reader
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: status-api-deployment-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: status-api-deployment-reader
+subjects:
+  - kind: ServiceAccount
+    name: status-api
+    namespace: idp-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: status-api
+  namespace: idp-system
+  labels:
+    app.kubernetes.io/name: status-api
+    app.kubernetes.io/part-of: idp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: status-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: status-api
+        app.kubernetes.io/part-of: idp
+    spec:
+      serviceAccountName: status-api
+      securityContext:
+        runAsNonRoot: true
+        # The distroless image declares its user by name ("nonroot"), and the
+        # kubelet cannot verify a non-numeric user against runAsNonRoot. 65532
+        # is the uid behind that name.
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: status-api
+          image: idp/status-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          # Readiness is tied to the informer caches: until they are populated
+          # the service would answer "no WebApps", which is not the same answer
+          # as "not ready".
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-api
+  namespace: idp-system
+spec:
+  # NodePort 30081 is mapped to the host by the kind config, so the API is
+  # reachable at http://localhost:30081 without a port-forward.
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: status-api
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+      nodePort: 30081
