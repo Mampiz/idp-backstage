@@ -39,10 +39,10 @@ function render(target: Entity, fetchMock: jest.Mock) {
 }
 
 function respond(body: unknown, init: { status?: number } = {}) {
-  const status = init.status ?? 200;
+  const code = init.status ?? 200;
   return {
-    ok: status >= 200 && status < 300,
-    status,
+    ok: code >= 200 && code < 300,
+    status: code,
     statusText: 'test',
     json: async () => body,
   };
