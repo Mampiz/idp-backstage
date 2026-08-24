@@ -7,7 +7,7 @@ State of the phase graph. A phase is not done until its verifier exits 0.
 | F0 | Base: kind + operator + monorepo | ✅ **passes** | `make verify-f0` |
 | F1 | Backstage base (Postgres, catalog, discovery) | ✅ **passes** | `make verify-f1` |
 | F2 | [GO] status-api | ✅ **passes** | `make verify-f2` |
-| F3 | [GO] scaffolder service | ⬜ pending (checkpoint) | a curl creates a real repo + CR + Ready pods |
+| F3 | [GO] scaffolder service | 🟡 built and tested, **verifier blocked on a token scope** | `make verify-f3` |
 | F4 | Backstage software template | ⬜ pending | the form in `/create` produces repo + CR + pods |
 | F5 | webapp-status frontend plugin | ⬜ pending (checkpoint) | the tab tracks a real `kubectl scale` |
 | F6 | Wrap-up: TechDocs, README, diagram, GIF | ⬜ pending | — |
@@ -246,6 +246,100 @@ first image build failed.
 The distroless image declares its user by name (`nonroot`), and the kubelet cannot verify a
 non-numeric user against `runAsNonRoot: true`, so the pod spec pins `runAsUser: 65532`,
 the uid behind that name.
+
+---
+
+## F3 · SCAFFOLDER SERVICE — 🟡 built and tested, verifier blocked
+
+**Verifier:** `make verify-f3`. Steps 1 and 2 pass; step 3 is blocked by a missing scope on
+the GitHub token, which needs a browser to fix. See the blocker below.
+
+### What I did
+
+`POST /scaffold` takes `{name, owner, repoUrl, image, port, replicas}` and, in order and
+idempotently:
+
+1. creates the GitHub repository and commits an embedded template (`go:embed`): a
+   stdlib-only Go service with `/healthz`, `/readyz` and `/metrics`, a distroless
+   Dockerfile, a Makefile, a workflow publishing to ghcr.io, `catalog-info.yaml`, and the
+   `webapp.yaml` that runs it;
+2. applies the matching WebApp custom resource with a server-side apply.
+
+Both Go services now run **inside the cluster**, each with its own ServiceAccount bound to
+the operator's published editor/viewer ClusterRoles, and are reachable from the host on
+NodePorts 30080 and 30081 through the kind port mappings.
+
+### Design decisions
+
+**1. The failure policy: the repository is never deleted.**
+This is the decision the brief asked to make and document. If step 2 fails, deleting the
+repository would be irreversible, and if the name happened to be taken already it would
+destroy somebody's work to tidy up after our own failure. So the run stops in a state that
+is explicit and resumable:
+
+- the repository is tagged with the `idp-provisioning-incomplete` topic, so the
+  half-finished state is discoverable from GitHub itself without asking this service;
+- the response is **207 Multi-Status**, naming the step that failed and returning the
+  repository that does exist;
+- re-sending the same request finishes the job, because every step is idempotent.
+
+A successful run tags the repository `idp-managed` and clears the incomplete marker.
+Failing to write a topic never masks the error that actually matters.
+
+**2. Validation happens before anything is created.**
+The image is checked against the operator's rule (explicit, non-latest tag) up front. This
+is the F0 finding paying off: without it, a request would create a repository and then be
+refused by admission, producing exactly the half-finished state the failure policy exists
+to avoid. Every problem is reported at once so a form is not resubmitted one mistake at a
+time.
+
+**3. The scaffolded service has no dependencies at all.**
+Metrics are written by hand in Prometheus exposition format rather than pulling in
+`client_golang`. A counter and a duration total are not worth a dependency: there is no
+`go.sum` to keep in sync and the generated repository builds offline. A test renders the
+template into a temporary directory and runs `go vet` and `go test` on the result, so what
+the template produces is proven to compile and pass its own tests.
+
+**4. One commit through the git data API, not one commit per file.**
+The contents API would produce a commit per file. The git data API writes a tree and a
+single commit instead. It cannot operate on a repository with no commits at all
+("409 Git Repository is empty"), so new repositories are created with auto-init and a
+pre-existing empty one is bootstrapped through the contents API first.
+
+**5. The token never touches a file.**
+`make scaffolder-secret` pipes `kubectl create secret --dry-run=client -o yaml` into
+`kubectl apply`, reading `$GITHUB_TOKEN` from the environment. Nothing is written to disk
+at any point.
+
+**6. `internal/k8s/client.go` is duplicated between the two services on purpose.**
+They are separate Go modules with separate container build contexts. Sharing sixty lines
+would mean either coupling both images to a repo-root build context or adding a third
+module with a `replace` that breaks outside the workspace. The duplication is cheaper than
+either.
+
+### 🚧 BLOCKER: the GitHub token is missing the `workflow` scope
+
+The verifier fails at the push step with a **404 Not Found** from
+`POST /repos/{owner}/{repo}/git/trees`, with an empty body. That reads like a missing
+repository, and it is not: writing a tree that contains anything under
+`.github/workflows/` requires the `workflow` scope, and GitHub reports its absence as a
+bare 404 rather than a 403. Reproduced precisely:
+
+```
+CreateTree with entry "probe2.txt"                  -> 201 Created
+CreateTree with entry ".github/workflows/probe.yml" -> 404 Not Found
+```
+
+The `gh` CLI does not request that scope by default; this token carries
+`admin:public_key, gist, read:org, repo`. The fix needs a browser:
+
+```
+gh auth refresh -h github.com -s workflow
+```
+
+The service no longer fails opaquely on this: the 404 is translated into a named error that
+says what to do, and the token's scopes are checked at startup so the problem surfaces
+before anyone's repository is half provisioned. Both behaviours are covered by tests.
 
 ---
 
