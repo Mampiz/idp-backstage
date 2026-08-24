@@ -9,7 +9,7 @@ State of the phase graph. A phase is not done until its verifier exits 0.
 | F2 | [GO] status-api | ✅ **passes** | `make verify-f2` |
 | F3 | [GO] scaffolder service | ✅ **passes** | `make verify-f3` |
 | F4 | Backstage software template | ✅ **passes** | `make verify-f4` |
-| F5 | webapp-status frontend plugin | ⬜ pending (checkpoint) | the tab tracks a real `kubectl scale` |
+| F5 | webapp-status frontend plugin | ✅ **passes** | `make verify-f5` |
 | F6 | Wrap-up: TechDocs, README, diagram, GIF | ⬜ pending | — |
 
 ---
@@ -422,6 +422,75 @@ does not fail a run whose real work already succeeded.
 Only `examples/org.yaml` is still registered, because the guest identity and the OwnerPicker
 need a user and a group to point at. The example component and the example template are gone
 now that a real one exists.
+
+---
+
+## F5 · WEBAPP STATUS PLUGIN — ✅ passes
+
+**Verifier:** `make verify-f5` → exit 0. Seven steps, ending in a real browser: it opens the
+entity page, asserts the tab renders what `kubectl` reports, then scales the custom resource
+from outside Backstage entirely and watches the page follow it without a reload.
+
+### What I did
+
+A frontend plugin for the **new frontend system** (`createFrontendPlugin` +
+`EntityContentBlueprint`) that adds a **WebApp** tab to entities carrying the
+`platform.miportfolio.com/webapp` annotation, showing the Available condition, replicas, the
+deployed image, the port, the workload name and the autoscaling window.
+
+### Design decisions
+
+**1. Through the Backstage proxy, not straight from the browser.**
+The Go status API is not a browser-facing origin. Going through `proxy.endpoints` means no
+CORS configuration, no second URL for the frontend to know about, and the browser only ever
+talks to Backstage. The endpoint is restricted to `GET`.
+
+**2. Polling every five seconds, not SSE.**
+The state is a handful of fields that change on the timescale of a rollout; the Go API
+already serves them from an informer cache, so a request costs the cluster nothing; and an
+open stream per viewer would have to be reconnected through the proxy on every hiccup. If
+this ever needs sub-second latency, the stream belongs in the Go service, not in the
+browser. The interval is one constant, so changing the decision is a one-line change.
+
+**3. The UI does not collapse numbers that are genuinely different.**
+Desired and effective replicas are shown separately whenever they diverge — with autoscaling
+on, the operator hands the Deployment's replica count to the HPA, so "2 desired" and
+"7 running" are both true and mean different things. A rollout shows both the running image
+and the one being rolled out to. Collapsing either would make the tab lie at exactly the
+moment somebody is looking at it to find out what is going on.
+
+**4. The tab is attached by annotation, not to every component.**
+`EntityContentBlueprint` takes a filter, so components that are not deployed as a WebApp do
+not grow an empty tab. An entity that has the annotation but no custom resource in the
+cluster gets an explicit "not in the cluster" state, which is a different answer from "not
+linked".
+
+**5. In-flight responses are discarded on navigation.**
+A generation counter makes a slow response for a previous entity unable to land on the
+current one. Without it, clicking between two components fast enough shows one component's
+numbers under the other's name.
+
+**6. The plugin lives at `backstage/plugins/webapp-status`, not at the repo root.**
+The brief's layout puts it at `/plugins/webapp-status`. A Backstage plugin has to be inside
+the app's yarn workspace to be resolvable, and yarn workspace globs cannot reach outside the
+project directory, so it sits in the Backstage workspace's own `plugins/` directory. It is
+the same thing in the only place it can be.
+
+### The browser test, and getting chromium to run without root
+
+The unit tests prove the component renders the right strings; only a browser proves the tab
+actually mounts and updates. Backstage's `generateProjects()` hard-defaults Playwright to the
+`chrome` channel — a system-wide Google Chrome that needs root to install — and passing
+`channel: undefined` does not help because the helper resolves it with `??` and falls back to
+`"chrome"` again. The config now removes the key entirely unless `PLAYWRIGHT_CHANNEL` asks
+for one, which selects Playwright's own bundled chromium.
+
+That bundled chromium is still missing four shared objects
+(`libnspr4`, `libnss3`, `libnssutil3`, `libasound`), and `playwright install-deps` shells out
+to apt as root. `infra/scripts/playwright-libs.sh` fetches the three packages with
+`apt-get download` — which needs no privileges, it only downloads `.deb` files — unpacks them
+into a prefix under `node_modules/.cache`, and prints the `LD_LIBRARY_PATH` to use. No root
+anywhere, and nothing outside the repository is touched.
 
 ---
 

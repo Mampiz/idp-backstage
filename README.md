@@ -56,3 +56,6 @@ opinions, and they run in CI as well as locally.
 | `make verify-f0` | The operator is installed and reconciles a WebApp into Ready pods |
 | `make verify-f1` | Backstage runs on Postgres, discovery works, and the catalog survives a database restart |
 | `make verify-f2` | The status API reports what `kubectl` reports, compared field by field |
+| `make verify-f3` | One curl produces a real repository, a real custom resource and Ready pods |
+| `make verify-f4` | Executing the software template does the same, with nothing done by hand |
+| `make verify-f5` | A real browser opens the WebApp tab and watches it follow a `kubectl scale` |

@@ -132,16 +132,13 @@ step "7. A real browser shows it"
 if [ ! -d "${HOME}/.cache/ms-playwright" ]; then
   fail "playwright browsers are not installed - run: cd backstage && yarn playwright install chromium"
 fi
-# Chromium needs system libraries that only root can install, so say exactly
-# what to run instead of failing with a linker error.
-if ! (cd backstage && yarn playwright install-deps --dry-run chromium 2>/dev/null | grep -q 'Missing system dependencies') ; then
-  : # nothing missing
-else
-  echo "  chromium is missing system libraries. Install them once with:" >&2
-  echo "    cd backstage && sudo yarn playwright install-deps chromium" >&2
-  fail "the browser cannot start until those are installed"
-fi
+# Chromium needs four shared objects the distribution does not ship by default.
+# This fetches them into a local prefix without root; see the script.
+CHROMIUM_LIBS="$("${ROOT}/infra/scripts/playwright-libs.sh")" \
+  || fail "could not make chromium runnable - see the output above"
+pass "chromium libraries available at ${CHROMIUM_LIBS}"
 ( cd backstage && KUBE_CONTEXT="${CONTEXT}" WEBAPP_NAMESPACE="${NS}" TEMPLATE_DEMO_NAME="${NAME}" \
+  LD_LIBRARY_PATH="${CHROMIUM_LIBS}:${LD_LIBRARY_PATH:-}" \
   yarn playwright test --project='@internal/plugin-webapp-status' --reporter=line ) \
   || fail "the browser test failed"
 pass "the WebApp tab renders the cluster state and follows a kubectl scale"

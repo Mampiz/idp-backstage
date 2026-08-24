@@ -44,19 +44,38 @@ test.describe('the WebApp tab', () => {
 
     await page.goto(`/catalog/default/component/${NAME}/webapp`);
 
-    // The tab exists on this entity because it carries the annotation.
-    await expect(page.getByRole('heading', { name: 'WebApp' })).toBeVisible({ timeout: 60_000 });
+    // The app uses the guest provider, so the sign-in card renders in place of
+    // the requested route until it is dismissed. The button has to be waited
+    // for rather than probed: on a cold dev server the bundle is still loading
+    // when the navigation resolves, so an immediate isVisible() check misses it
+    // and the session is never established. Once dismissed, the router
+    // continues to the route that was asked for, with no second navigation.
+    await page
+      .getByRole('button', { name: 'Enter' })
+      .click({ timeout: 60_000 })
+      .catch(() => {
+        // Already signed in from a previous run in the same browser profile.
+      });
+
+    // The tab is only attached to entities carrying the annotation, so its
+    // presence is itself part of the claim. The entity page renders its tabs as
+    // links inside a "Content navigation" landmark, not as ARIA tabs.
+    await expect(
+      page.getByRole('navigation', { name: 'Content navigation' }).getByRole('link', { name: 'WebApp' }),
+    ).toBeVisible({ timeout: 60_000 });
 
     // The state shown has to be the cluster's, so it is compared against what
     // kubectl reports rather than against a fixture.
+    await expect(page.getByText(`${NAMESPACE}/${NAME}`).first()).toBeVisible({ timeout: 60_000 });
+
     const desired = kubectl('-n', NAMESPACE, 'get', 'webapp', NAME, '-o', 'jsonpath={.spec.replicas}');
     await expect(page.getByText(new RegExp(`/ ${desired} ready`))).toBeVisible({ timeout: 60_000 });
 
     const image = kubectl('-n', NAMESPACE, 'get', 'webapp', NAME, '-o', 'jsonpath={.spec.image}');
-    await expect(page.getByText(image, { exact: false })).toBeVisible();
+    await expect(page.getByText(image, { exact: false }).first()).toBeVisible();
 
     // Now the actual claim: scale the custom resource from outside Backstage
-    // entirely and watch the page follow it, with no reload.
+    // entirely and watch the page follow it, without reloading.
     scaleTo(4);
 
     await expect(page.getByText(/\/ 4 ready/)).toBeVisible({ timeout: 60_000 });
