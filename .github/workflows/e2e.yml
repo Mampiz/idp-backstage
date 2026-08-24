@@ -27,6 +27,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           config: infra/kind/idp-local.yaml
+          # The action names the cluster itself and ignores the name in the
+          # config file; without this the context is not kind-idp-local and
+          # every kubectl call in the Makefile misses.
+          cluster_name: idp-local
 
       - name: Install cert-manager
         run: make cert-manager
