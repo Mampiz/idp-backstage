@@ -55,6 +55,8 @@ cluster-down: ## Delete the local kind cluster
 cert-manager: ## Install cert-manager (REQUIRED: the operator's webhooks need CA injection)
 	$(KUBECTL) apply -f $(CERT_MANAGER_URL)
 	$(KUBECTL) -n cert-manager wait deployment --all --for=condition=Available --timeout=300s
+	@# Available is not the same as serving: see the comment in the script.
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/wait-cert-manager.sh
 
 .PHONY: operator-install
 operator-install: ## Install webapp-operator $(OPERATOR_VERSION) from its dist/install.yaml
