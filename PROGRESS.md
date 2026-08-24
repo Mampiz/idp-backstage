@@ -6,7 +6,7 @@ devuelve exit code 0.
 | Fase | Qué | Estado | Verificador |
 |------|-----|--------|-------------|
 | F0 | Base: kind + operador + monorepo | ✅ **PASA** | `make verify-f0` |
-| F1 | Backstage base (Postgres, catálogo, discovery) | ⬜ pendiente | `yarn dev` + catálogo persiste reinicio |
+| F1 | Backstage base (Postgres, catálogo, discovery) | 🟡 **verificador PASA**, discovery bloqueado | `make verify-f1` |
 | F2 | [GO] status-api | ⬜ pendiente | `go test ./...` + `curl :8081/api/webapps` |
 | F3 | [GO] scaffolder service | ⬜ pendiente (checkpoint) | curl crea repo real + CR + pods Ready |
 | F4 | Software Template de Backstage | ⬜ pendiente | formulario en `/create` → repo + CR + pods |
@@ -92,3 +92,73 @@ por accidente.
 - El scaffolder (F3) necesitará permisos sobre `webapps` desde fuera del cluster:
   el operador ya expone los ClusterRoles `webapp-operator-webapp-editor-role` y
   `-viewer-role`, reutilizables para el ServiceAccount de mis servicios Go.
+
+
+---
+
+## F1 · BACKSTAGE BASE — 🟡 verificador PASA, con un bloqueo abierto
+
+**Verificador:** `make verify-f1` → exit 0. Comprueba que Backstage arranca contra
+Postgres (no SQLite), que frontend y backend responden, que el catálogo sirve el
+Component `webapp-operator` por API, y que el dato sigue en Postgres **con Backstage
+apagado** después de reiniciar el contenedor.
+
+### Qué hice
+
+- `npx @backstage/create-app` → Backstage **1.54.0**, que ya trae el New Backend
+  System (`backend.add(import(...))` en `packages/backend/src/index.ts`). No hay
+  `createRouter` ni backend legacy en ningún punto.
+- **Postgres 17.6** por `docker-compose.yaml` con volumen nombrado `idp-pgdata`,
+  sustituyendo el `better-sqlite3 :memory:` de la plantilla.
+- Entidades propias en `catalog/webapp-operator.yaml`: el Component
+  `webapp-operator`, el System `idp` y el Group `platform`, registradas como
+  static location en `app-config.yaml`.
+- `@backstage/plugin-catalog-backend-module-github` instalado y añadido al backend.
+- Targets `db-up` / `db-down` / `db-nuke` / `dev` / `verify-f1` en el Makefile.
+
+### Decisiones de diseño
+
+**1. El token de GitHub no vive en `.env`, vive en el entorno del shell.**
+Tu regla dice "por env var, nunca en disco". `.env` está gitignoreado pero sigue
+siendo disco, así que `.env` solo guarda configuración no secreta (Postgres, owner)
+y `GITHUB_TOKEN` hay que exportarlo: `export GITHUB_TOKEN=$(gh auth token)`.
+El Makefile tiene un guard (`require-github-token`) que falla con instrucciones
+claras si no está. Backstage no arranca sin él: `integrations.github[0].token`
+valida el tipo y una cadena vacía es un error de arranque, no un warning.
+
+**2. La verificación de persistencia se hace con Backstage APAGADO.**
+Reiniciar el contenedor y volver a preguntar por la API no prueba nada: la entidad
+viene de una static location y Backstage la re-ingestaría igualmente. El verificador
+mata Backstage, reinicia el contenedor y lee la fila directamente de
+`final_entities` por `psql`. Si el dato sigue ahí es porque está en el volumen.
+
+**3. Token estático de acceso externo para los verificadores.**
+`backend.auth.externalAccess` de tipo `static` con `BACKSTAGE_VERIFY_TOKEN`, para
+que los scripts llamen a la API del catálogo sin sesión de navegador. Es la vía
+soportada; la alternativa (`dangerouslyDisableDefaultAuthPolicy`) apaga la
+autenticación de todo el backend y no la quiero ni en local.
+
+### 🚧 BLOQUEO: GitHub discovery no funciona con una cuenta personal
+
+`Mampiz` es una cuenta de **usuario**, no una organización, y el
+`GithubEntityProvider` de Backstage solo sabe descubrir organizaciones. Comprobado
+en el código instalado y contra la API real:
+
+```
+$ grep -c 'organization(login: $org)' node_modules/@backstage/plugin-catalog-backend-module-github/dist/lib/github.cjs.js
+5                       # todas las queries GraphQL del provider son organization(login:)
+$ gh api graphql -f query='{ organization(login: "Mampiz") { login } }'
+NOT_FOUND: Could not resolve to an Organization with the login of 'Mampiz'
+```
+
+No hay `user(login:)` ni `repositoryOwner` en el paquete: no es cuestión de
+configuración, la funcionalidad no existe. Por eso `catalog.providers.github` está
+sin rellenar y el módulo queda cargado pero inerte. **Pendiente de decisión tuya**,
+las opciones están en la conversación. Afecta también a F3/F4 (dónde aterrizan los
+repos scaffoldeados).
+
+### Qué queda
+
+- Decidir el approach de discovery y aplicarlo.
+- El `examples/` de la plantilla (org.yaml, entities.yaml, template.yaml) sigue
+  registrado; lo limpiaré en F4 cuando el template propio lo sustituya.

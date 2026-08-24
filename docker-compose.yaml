@@ -1,0 +1,27 @@
+# Postgres backing Backstage. The catalog must survive restarts, so the data
+# lives in a named volume, not in the container's writable layer (and certainly
+# not in the in-memory SQLite the create-app template ships with).
+#
+# Credentials come from .env (gitignored); the defaults below are local-only.
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    container_name: idp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-backstage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backstage}
+      POSTGRES_DB: ${POSTGRES_DB:-backstage}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - idp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-backstage} -d ${POSTGRES_DB:-backstage}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  idp-pgdata:
+    name: idp-pgdata

@@ -1,0 +1,52 @@
+# The operator is the piece this whole platform is built around, so it is a
+# first-class catalog entity. Its repository has no catalog-info.yaml and we do
+# not modify it, so the entity is declared here and registered as a static
+# catalog location (see app-config.yaml -> catalog.locations).
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: webapp-operator
+  title: WebApp Operator
+  description: >-
+    Kubernetes operator that reconciles WebApp custom resources
+    (platform.miportfolio.com/v1) into a Deployment, a Service and an optional
+    HorizontalPodAutoscaler. It is what turns a scaffolded repository into
+    something actually running in the cluster.
+  annotations:
+    github.com/project-slug: Mampiz/webapp-operator
+    backstage.io/source-location: url:https://github.com/Mampiz/webapp-operator/
+  tags:
+    - go
+    - kubernetes
+    - operator
+    - platform
+  links:
+    - url: https://github.com/Mampiz/webapp-operator
+      title: Source
+      icon: github
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/platform
+  system: system:default/idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: idp
+  title: Internal Developer Platform
+  description: >-
+    Self-service platform: a Backstage template creates a repository and applies
+    a WebApp custom resource that the operator reconciles into a running workload.
+spec:
+  owner: group:default/platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform
+  title: Platform Team
+  description: Owns the IDP and everything that runs it.
+spec:
+  type: team
+  children: []

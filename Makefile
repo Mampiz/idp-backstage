@@ -18,6 +18,16 @@ CERT_MANAGER_URL     ?= https://github.com/cert-manager/cert-manager/releases/do
 KUBECTL := kubectl --context=$(KUBE_CONTEXT)
 GO_SERVICES := services/status-api services/scaffolder
 
+# Local configuration and secrets live in .env (gitignored, see .env.example).
+# Loaded here and exported so Backstage and the Go services pick them up.
+-include .env
+export
+POSTGRES_HOST ?= localhost
+POSTGRES_PORT ?= 5432
+POSTGRES_USER ?= backstage
+POSTGRES_PASSWORD ?= backstage
+POSTGRES_DB ?= backstage
+
 ##@ General
 
 help: ## Show this help
@@ -87,6 +97,42 @@ test: ## Run Go tests across the workspace
 .PHONY: fmt
 fmt: ## gofmt every Go service
 	@for s in $(GO_SERVICES); do (cd $$s && gofmt -l -w .); done
+
+##@ F1 - Backstage
+
+.PHONY: db-up
+db-up: ## Start the Postgres backing Backstage
+	docker compose up -d postgres
+	@until docker compose exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; do sleep 1; done
+	@echo "postgres ready on $(POSTGRES_HOST):$(POSTGRES_PORT)"
+
+.PHONY: db-down
+db-down: ## Stop Postgres (keeps the data volume)
+	docker compose stop postgres
+
+.PHONY: db-nuke
+db-nuke: ## Stop Postgres AND delete its data volume
+	docker compose down -v
+
+.PHONY: backstage-install
+backstage-install: ## Install Backstage dependencies
+	cd backstage && yarn install --immutable
+
+.PHONY: require-github-token
+require-github-token:
+	@[ -n "$$GITHUB_TOKEN" ] || { \
+		echo "GITHUB_TOKEN is not exported."; \
+		echo "It is deliberately not kept in .env. Run:"; \
+		echo "  export GITHUB_TOKEN=\$$(gh auth token)"; \
+		exit 1; }
+
+.PHONY: dev
+dev: require-github-token db-up ## Run Backstage (frontend + backend) against the local Postgres
+	cd backstage && yarn start
+
+.PHONY: verify-f1
+verify-f1: require-github-token ## F1 verifier: Backstage boots on Postgres, serves the catalog, and survives a DB restart
+	@./infra/scripts/verify-f1.sh
 
 ##@ Utils
 
