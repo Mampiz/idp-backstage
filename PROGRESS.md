@@ -8,7 +8,7 @@ State of the phase graph. A phase is not done until its verifier exits 0.
 | F1 | Backstage base (Postgres, catalog, discovery) | ✅ **passes** | `make verify-f1` |
 | F2 | [GO] status-api | ✅ **passes** | `make verify-f2` |
 | F3 | [GO] scaffolder service | ✅ **passes** | `make verify-f3` |
-| F4 | Backstage software template | ⬜ pending | the form in `/create` produces repo + CR + pods |
+| F4 | Backstage software template | ✅ **passes** | `make verify-f4` |
 | F5 | webapp-status frontend plugin | ⬜ pending (checkpoint) | the tab tracks a real `kubectl scale` |
 | F6 | Wrap-up: TechDocs, README, diagram, GIF | ⬜ pending | — |
 
@@ -348,6 +348,80 @@ export GITHUB_TOKEN=$(gh auth token)
 The service no longer fails opaquely on this: the 404 is translated into a named error that
 says what to do, and the token's scopes are checked at startup so the problem surfaces
 before anyone's repository is half provisioned. Both behaviours are covered by tests.
+
+---
+
+## F4 · SOFTWARE TEMPLATE — ✅ passes
+
+**Verifier:** `make verify-f4` → exit 0.
+
+The brief's verifier is "fill in the form at `/create` and a repository, a custom resource
+and pods come out, with nothing done by hand". A mouse cannot be scripted, but the form is
+only a client of the scaffolder API: submitting it executes the template through
+`POST /api/scaffolder/v2/tasks`. The verifier drives that exact path with the exact values
+the form would send, so the same thing is proven. It also asserts that the form itself is
+right — every field present, `owner` on the OwnerPicker, `repoUrl` on the RepoUrlPicker —
+because driving the API would otherwise pass even if the form were broken.
+
+Proof of the last run: [Mampiz/idp-template-demo](https://github.com/Mampiz/idp-template-demo)
+and `idp-apps/idp-template-demo` running 2/2 pods, created from the template with no manual
+step.
+
+### The decision: a thin custom action, not the proxy
+
+Both options were real, and the choice is not obvious.
+
+**The proxy route** (`http:backstage:request`) is **not in Backstage core** — verified in
+1.54: the only actions the core scaffolder backend ships are `dry-run`, `execute-template`,
+`get-scaffolder-task-logs`, `list-scaffolder-actions` and `list-scaffolder-tasks`. It comes
+from `@roadiehq/scaffolder-backend-module-http-request`, a maintained community module
+(v5.8.0, June 2026) that does support the new backend system. Using it would mean routing
+the Go service through `proxy.endpoints` and writing no TypeScript at all, which is
+genuinely attractive under the project's design rule.
+
+**I chose a thin custom action anyway**, for three reasons:
+
+1. **The action needs typed outputs.** Later steps and the result page use
+   `steps.scaffoldWebApp.output.repoUrl` and the namespace and name of the custom resource.
+   A generic HTTP action returns `{code, headers, body}`, so those would have to be dug out
+   of an untyped body inside template YAML.
+2. **The error surface is the whole point.** The Go service answers 400 with a list of
+   validation problems and **207 with a documented half-finished state**. Turning those into
+   something a person can act on with a generic action means `if` conditions on
+   `steps.x.output.code` inside YAML — which is logic, in the least testable place in the
+   stack. In TypeScript it is five lines and five unit tests.
+3. One less third-party dependency in the provisioning path.
+
+**The action holds no business logic.** It builds a request, sends it, and maps status codes
+to messages: about seventy lines. Validating the image against what the operator's webhook
+will accept, the order of the steps, idempotency and the failure policy all stay in Go. Its
+tests assert exactly that transport contract, including that a 207 explains which step
+failed and that the repository was left in place.
+
+### Other decisions
+
+**1. The form validates the image tag too, and the Go service is still the authority.**
+The `image` field carries a pattern that rejects `:latest` and untagged references. The
+user finds out while typing instead of after a repository already exists. The Go service
+validates it again, because a form is not a security boundary and the API is callable
+directly.
+
+**2. Step ids are camelCase, and the verifier enforces it.**
+Inside `${{ steps.x.output.y }}` a hyphen is parsed as subtraction, so a step called
+`scaffold-web-app` silently evaluates to `NaN` instead of failing. The verifier greps the
+template for a hyphenated step id and fails if it finds one, so the rule survives future
+edits rather than living in someone's memory.
+
+**3. The template registers the component explicitly even though discovery would find it.**
+The Go discovery service would pick the new repository up within its cache TTL. Registering
+it in a `catalog:register` step just means the component is already there when the user
+clicks through from the result page. It is marked `optional: true`, so a hiccup registering
+does not fail a run whose real work already succeeded.
+
+**4. The create-app example entities were dropped.**
+Only `examples/org.yaml` is still registered, because the guest identity and the OwnerPicker
+need a user and a group to point at. The example component and the example template are gone
+now that a real one exists.
 
 ---
 

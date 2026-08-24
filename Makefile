@@ -200,6 +200,12 @@ scaffolder-deploy: scaffolder-image scaffolder-secret ## Deploy the scaffolder i
 verify-f3: require-github-token ## F3 verifier: a real repository, a real custom resource, real pods
 	@KUBE_CONTEXT=$(KUBE_CONTEXT) ./infra/scripts/verify-f3.sh
 
+##@ F4 - Software template
+
+.PHONY: verify-f4
+verify-f4: require-github-token ## F4 verifier: executing the template produces repo + custom resource + pods
+	@KUBE_CONTEXT=$(KUBE_CONTEXT) GITHUB_OWNER=$(GITHUB_OWNER) ./infra/scripts/verify-f4.sh
+
 ##@ Utils
 
 .PHONY: kubectx

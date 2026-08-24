@@ -201,6 +201,12 @@ auth:
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
 
+# Configuration owned by this platform rather than by Backstage.
+platform:
+  # Base URL of the Go scaffolder service. It runs in the cluster and is exposed
+  # on a NodePort that the kind config maps to the host.
+  scaffolderBaseUrl: http://localhost:30080
+
 catalog:
   import:
     entityFilename: catalog-info.yaml
@@ -208,6 +214,13 @@ catalog:
   rules:
     - allow: [Component, System, API, Resource, Location]
   locations:
+    # The software template. It is a thin form: the step that does the work
+    # calls the Go service.
+    - type: file
+      target: ../../../templates/webapp-service/template.yaml
+      rules:
+        - allow: [Template]
+
     # GitHub discovery, served by the Go scaffolder service. Backstage's own
     # GithubEntityProvider only discovers organizations, and these repositories
     # live under a personal account, so the discovery is done in Go and handed
@@ -225,17 +238,9 @@ catalog:
       rules:
         - allow: [Component, System, Group]
 
-    # Local example data, file locations are relative to the backend process, typically `packages/backend`
-    - type: file
-      target: ../../examples/entities.yaml
-
-    # Local example template
-    - type: file
-      target: ../../examples/template/template.yaml
-      rules:
-        - allow: [Template]
-
-    # Local example organizational data
+    # Guest user and group, so the OwnerPicker has something to offer and the
+    # guest session resolves to an identity. The rest of the create-app example
+    # data was dropped once the real template replaced it.
     - type: file
       target: ../../examples/org.yaml
       rules:

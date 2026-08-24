@@ -1,0 +1,128 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: webapp-service
+  title: Go service running on Kubernetes
+  description: |
+    Creates a Go service repository and puts it on the cluster in one step. The
+    repository comes with health endpoints, a distroless image build and a
+    workflow publishing to ghcr.io; the cluster gets a WebApp custom resource
+    that the operator reconciles into a Deployment, a Service and an HPA.
+  tags:
+    - go
+    - kubernetes
+    - recommended
+spec:
+  owner: group:default/platform
+  type: service
+
+  parameters:
+    - title: The service
+      required: [name, owner]
+      properties:
+        name:
+          title: Name
+          type: string
+          description: >-
+            Also the repository name and the name of the custom resource, so it
+            has to be a lowercase DNS label.
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
+          ui:autofocus: true
+          ui:help: 'Lowercase letters, digits and hyphens. No leading or trailing hyphen.'
+        description:
+          title: Description
+          type: string
+          description: What this service is for. Shown in GitHub and in the catalog.
+        owner:
+          title: Owner
+          type: string
+          description: The team or person responsible for it.
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: [Group, User]
+
+    - title: Where the code goes
+      required: [repoUrl]
+      properties:
+        repoUrl:
+          title: Repository
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+
+    - title: How it runs
+      required: [image, port, replicas]
+      properties:
+        image:
+          title: Container image
+          type: string
+          description: >-
+            The image the cluster will run. Until this service publishes its own
+            on the first push, a pinned public image is a reasonable placeholder.
+          default: nginx:1.27-alpine
+          # The operator's admission webhook rejects ":latest" and implicit tags
+          # outright. Catching it in the form means the user finds out here
+          # rather than after a repository already exists. The Go service
+          # validates it again and is the authority; this is only good manners.
+          pattern: '^\S+(:(?!latest$)[\w][\w.-]*|@sha256:[a-f0-9]{64})$'
+          ui:help: 'An explicit tag is required, and it cannot be "latest". A digest works too.'
+        port:
+          title: Port
+          type: number
+          description: The port the service listens on.
+          default: 8080
+          minimum: 1
+          maximum: 65535
+        replicas:
+          title: Replicas
+          type: integer
+          description: How many pods to run.
+          default: 2
+          minimum: 0
+          maximum: 10
+
+  steps:
+    # Step ids are camelCase and never contain a hyphen: inside
+    # ${{ steps.x.output.y }} a hyphen is parsed as subtraction, so a step named
+    # "scaffold-web-app" silently evaluates to NaN instead of erroring.
+    - id: scaffoldWebApp
+      name: Create the repository and put it on the cluster
+      action: platform:scaffoldWebApp
+      input:
+        name: ${{ parameters.name }}
+        description: ${{ parameters.description }}
+        repoUrl: ${{ parameters.repoUrl }}
+        image: ${{ parameters.image }}
+        port: ${{ parameters.port }}
+        replicas: ${{ parameters.replicas }}
+        catalogOwner: ${{ parameters.owner }}
+
+    # Discovery would find the new repository on its own within its cache TTL.
+    # Registering it explicitly just means the component is in the catalog by the
+    # time the user clicks through from this page.
+    - id: registerComponent
+      name: Register it in the catalog
+      action: catalog:register
+      input:
+        catalogInfoUrl: ${{ steps.scaffoldWebApp.output.repoUrl }}/blob/main/catalog-info.yaml
+        optional: true
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps.scaffoldWebApp.output.repoUrl }}
+        icon: github
+      - title: Open in the catalog
+        icon: catalog
+        entityRef: ${{ steps.registerComponent.output.entityRef }}
+    text:
+      - title: Running in the cluster
+        content: |
+          The WebApp custom resource `${{ steps.scaffoldWebApp.output.webappNamespace }}/${{ steps.scaffoldWebApp.output.webappName }}`
+          has been applied. The operator is reconciling it into a Deployment, a
+          Service and, if you asked for autoscaling, an HPA. The **WebApp** tab
+          on the component page shows the live state.

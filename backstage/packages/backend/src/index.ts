@@ -16,6 +16,9 @@ backend.add(import('@backstage/plugin-proxy-backend'));
 // scaffolder plugin
 backend.add(import('@backstage/plugin-scaffolder-backend'));
 backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
+// Thin HTTP client for the Go scaffolder service. It holds no business logic;
+// see the file header and PROGRESS.md (F4) for why it exists at all.
+backend.add(import('./modules/scaffoldWebApp'));
 backend.add(
   import('@backstage/plugin-scaffolder-backend-module-notifications'),
 );

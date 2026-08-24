@@ -9,8 +9,10 @@
  * answer into something readable in the scaffolder UI.
  */
 import { coreServices, createBackendModule } from '@backstage/backend-plugin-api';
-import { createTemplateAction } from '@backstage/plugin-scaffolder-node';
-import { scaffolderActionsExtensionPoint } from '@backstage/plugin-scaffolder-node/alpha';
+import {
+  createTemplateAction,
+  scaffolderActionsExtensionPoint,
+} from '@backstage/plugin-scaffolder-node';
 
 type ScaffoldResponse = {
   name?: string;
