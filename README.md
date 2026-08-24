@@ -130,6 +130,7 @@ A phase is done when its command exits zero. They run locally and in CI.
 | `make verify-f3` | One `curl` produces a real repository, a real custom resource and Ready pods — twice, idempotently |
 | `make verify-f4` | The software template does the same with nothing done by hand |
 | `make verify-f5` | A real browser opens the WebApp tab and watches it follow a `kubectl scale` |
+| `make verify-f6` | The docs build, the portal serves them, and the README carries the diagram and the demo |
 
 ## Running it
 

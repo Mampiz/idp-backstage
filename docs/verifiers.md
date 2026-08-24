@@ -12,6 +12,7 @@ a command, in the repository, that anybody can run.
 | `make verify-f3` | One `curl` produces a real repository with real content, a real custom resource, and Ready pods — and repeating it is a no-op |
 | `make verify-f4` | Executing the software template does all of the above with nothing done by hand, and the form has the fields and pickers it should |
 | `make verify-f5` | A real browser opens the WebApp tab and watches it follow a `kubectl scale` |
+| `make verify-f6` | The documentation builds, the portal serves it, and the README carries the diagram and the demo |
 
 ## What makes them worth having
 

@@ -10,7 +10,7 @@ State of the phase graph. A phase is not done until its verifier exits 0.
 | F3 | [GO] scaffolder service | ✅ **passes** | `make verify-f3` |
 | F4 | Backstage software template | ✅ **passes** | `make verify-f4` |
 | F5 | webapp-status frontend plugin | ✅ **passes** | `make verify-f5` |
-| F6 | Wrap-up: TechDocs, README, diagram, GIF | ⬜ pending | — |
+| F6 | Wrap-up: TechDocs, README, diagram, GIF | ✅ **passes** | `make verify-f6` |
 
 ---
 
@@ -491,6 +491,55 @@ to apt as root. `infra/scripts/playwright-libs.sh` fetches the three packages wi
 `apt-get download` — which needs no privileges, it only downloads `.deb` files — unpacks them
 into a prefix under `node_modules/.cache`, and prints the `LD_LIBRARY_PATH` to use. No root
 anywhere, and nothing outside the repository is touched.
+
+---
+
+## F6 · WRAP-UP — ✅ passes
+
+**Verifier:** `make verify-f6` → exit 0. It builds the platform's documentation with the
+same mkdocs image the portal uses, renders the service template and builds *its*
+documentation too, asks the running portal to build and serve its own docs, and checks the
+README carries the diagram and a real GIF of a sensible size.
+
+### What I did
+
+- **TechDocs for the platform**: `mkdocs.yml` at the repository root and five pages —
+  overview, how it works, the phases and their verifiers, running it locally, and the
+  decisions worth arguing about.
+- **TechDocs for every scaffolded service**: the template now ships an `mkdocs.yml` and two
+  pages of its own, so a generated repository has working documentation from its first
+  commit, including how to change what runs and how autoscaling changes the meaning of the
+  replica count.
+- **README rewritten** around what the project demonstrates rather than what it contains,
+  with two Mermaid diagrams: the sequence of a request through the platform, and how the
+  pieces fit together.
+- **A recorded demo**, `docs/assets/demo.gif`.
+
+### Design decisions
+
+**1. The demo is a recording of the real thing.**
+A Playwright script drives the portal in a browser: it fills in the form, watches the task
+run, opens the WebApp tab, and then scales the custom resource **with kubectl** so the last
+seconds show the page following the cluster. A real GitHub repository is created and a real
+workload runs. Nothing in it is staged, which is the only version of a platform demo worth
+showing.
+
+**2. The demo has its own Playwright config, separate from the verifiers'.**
+Recording a demo and asserting a claim are different jobs: one wants video, deliberate
+pauses and a single scripted path; the other wants speed and failure on the first
+discrepancy. Sharing a config would compromise both.
+
+**3. The GIF is built with a containerised ffmpeg.**
+Playwright ships an ffmpeg, but it is a minimal build whose only video filter is `scale` —
+no `fps`, no `setpts`, no `palettegen` — so it cannot produce a decent GIF. A full ffmpeg
+runs in a container, which keeps the script free of dependencies beyond what the repository
+already needs. The result is sped up and palette-quantised: a faithful real-time GIF of this
+flow would be tens of megabytes and nobody would watch it to the end.
+
+**4. The verifier builds the template's docs, not just the platform's.**
+It renders the template into a temporary directory and runs mkdocs on the result, so a
+change that breaks the documentation of every future scaffolded service fails here rather
+than in somebody's new repository.
 
 ---
 
