@@ -47,3 +47,15 @@ jobs:
           kubectl --context=kind-idp-local -n webapp-operator-system \
             logs deployment/webapp-operator-controller-manager --tail=200 || true
           kubectl --context=kind-idp-local get webapps -A -o yaml || true
+
+      # The operator reconciling is not the same as the workload running. When a
+      # Deployment never becomes Available the answer is in the pod, not in the
+      # controller, so dump what the scheduler and the kubelet had to say.
+      - name: Dump the reconciled workload on failure
+        if: failure()
+        run: |
+          kubectl --context=kind-idp-local -n idp-demo get all -o wide || true
+          kubectl --context=kind-idp-local -n idp-demo describe deployment || true
+          kubectl --context=kind-idp-local -n idp-demo describe pods || true
+          kubectl --context=kind-idp-local get events -A \
+            --sort-by=.lastTimestamp | tail -60 || true
